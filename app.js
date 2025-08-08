@@ -500,6 +500,7 @@ function playSequence() {
   ensureAudio();
 
   const ball = document.getElementById('ball');
+  const trailLayer = document.getElementById('trailLayer');
   const container = document.getElementById('textArea');
   const rect = container.getBoundingClientRect();
   const points = buildMotionPathFromEvents(rect);
@@ -509,10 +510,10 @@ function playSequence() {
   const startTime = state.events[0].time;
   const rel = state.events.map(e => ({ ...e, t: Math.max(0, e.time - startTime) }));
 
-  // Create a Tone.Part to schedule in order
+  // Create a Tone.Part to schedule in order (will be triggered by onUpdate sync)
   const part = new Tone.Part((time, value) => {
     if (value.note) state.synth?.triggerAttackRelease(value.note, 0.22, time);
-  }, rel.map(e => [e.t, { note: e.note }]));
+  }, rel.map((e, i) => [e.t, { note: e.note, index: i }]));
   part.start(0);
 
   // Compute total duration slightly beyond last event
@@ -521,12 +522,11 @@ function playSequence() {
   // Show ball
   gsap.set(ball, { opacity: 1 });
 
-  // Animate ball along points proportional to event times
-  // Build keyframes with times scaled to totalDur
+  // Build bezier arcs between successive points
   const lastT = rel[rel.length - 1].t || 0.0001;
   const keyframes = points.map((p, i) => ({
-    x: p.x + rect.left,
-    y: p.y + rect.top,
+    x: p.x,
+    y: p.y,
     t: (rel[i]?.t ?? (i / (points.length - 1) * lastT)) / totalDur,
   }));
 
@@ -535,18 +535,56 @@ function playSequence() {
     if (!isFinite(keyframes[i].t)) keyframes[i].t = i / Math.max(1, keyframes.length - 1);
   }
 
-  // Use MotionPath with relative container coords
-  gsap.to(ball, {
-    duration: totalDur,
-    ease: 'none',
-    motionPath: {
-      path: keyframes.map(k => ({ x: k.x - rect.left, y: k.y - rect.top })),
-      autoRotate: false,
-    },
-    onComplete: () => {
-      gsap.to(ball, { opacity: 0, duration: 0.3 });
-    },
-  });
+  // Build a piecewise timeline using quadratic bezier curves to simulate arcs
+  gsap.set(ball, { opacity: 1 });
+  const tl = gsap.timeline({ defaults: { ease: 'power1.inOut' } });
+  const local = (pt) => ({ x: pt.x, y: pt.y });
+  const playNoteAtIndex = (idx, when) => {
+    const e = rel[idx];
+    if (e?.note) state.synth?.triggerAttackRelease(e.note, 0.22, when);
+  };
+  // Clear previous trail
+  trailLayer.innerHTML = '';
+  for (let i = 0; i < keyframes.length - 1; i += 1) {
+    const a = local(keyframes[i]);
+    const b = local(keyframes[i + 1]);
+    // Arc control point: mid x between a and b, elevated y by -20..-60 px
+    const midX = (a.x + b.x) / 2;
+    const lift = Math.max(20, Math.min(60, Math.abs(a.x - b.x) * 0.25));
+    const cp = { x: midX, y: Math.min(a.y, b.y) - lift };
+    const segDur = (keyframes[i + 1].t - keyframes[i].t) * totalDur;
+    tl.to(ball, {
+      duration: segDur,
+      motionPath: {
+        path: [
+          { x: a.x, y: a.y },
+          { x: cp.x, y: cp.y },
+          { x: b.x, y: b.y },
+        ],
+        curviness: 1,
+        autoRotate: false,
+      },
+      onStart: () => {
+        // On landing at a (except first), play previous note
+        if (i === 0) playNoteAtIndex(0, '+0');
+      },
+      onComplete: () => {
+        // Play note at landing point b
+        playNoteAtIndex(i + 1, '+0');
+      },
+      onUpdate: () => {
+        // Trail effect
+        const r = ball.getBoundingClientRect();
+        const dot = document.createElement('div');
+        dot.className = 'trail-dot';
+        dot.style.left = `${r.left - rect.left + 3}px`;
+        dot.style.top = `${r.top - rect.top + 3}px`;
+        trailLayer.appendChild(dot);
+        gsap.to(dot, { opacity: 0, scale: 0.5, duration: 0.6, ease: 'power1.out', onComplete: () => dot.remove() });
+      },
+    }, i === 0 ? 0 : undefined);
+  }
+  tl.to(ball, { opacity: 0, duration: 0.3 });
 
   Tone.Transport.stop();
   Tone.Transport.position = 0;

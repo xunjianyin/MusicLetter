@@ -167,6 +167,21 @@ button:active { transform: translateY(0); }
   pointer-events: none;
 }
 
+.trail-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.trail-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 80%, white 20%);
+  opacity: 0.8;
+  filter: blur(0.3px);
+}
+
 /* Subtle ruled lines effect */
 .letter-sheet::before {
   content: '';
