@@ -15,7 +15,9 @@
     <script src="./app.js" defer></script>
   </head>
   <body>
-    <div class="controls" role="toolbar" aria-label="Controls">
+    <div class="controls collapsed" id="controls" role="toolbar" aria-label="Controls">
+      <button id="controlsToggle" class="controls-toggle" aria-label="Toggle controls" aria-expanded="false">⚙️</button>
+      <div class="controls-content">
       <div class="left-controls">
         <label for="themeSelect">Theme</label>
         <select id="themeSelect" aria-label="Select theme">
@@ -63,6 +65,16 @@
           <option value="right">Right</option>
           <option value="justify">Justify</option>
         </select>
+        <label for="playheadSelect">Playhead</label>
+        <select id="playheadSelect" aria-label="Playhead style">
+          <option value="classic">Classic Ball</option>
+          <option value="comet">Glow Comet</option>
+          <option value="star">Star</option>
+          <option value="heart">Heart</option>
+          <option value="flame">Flame</option>
+          <option value="kitten">Kitten</option>
+          <option value="diamond">Diamond</option>
+        </select>
       </div>
       <div class="right-controls">
         <button id="playBtn" aria-label="Play">Play</button>
@@ -83,6 +95,7 @@
         <button id="exportWavBtn" aria-label="Export WAV">Export WAV</button>
         <button id="importBtn" aria-label="Import JSON">Import</button>
         <input id="importFile" type="file" accept="application/json" style="display:none" />
+      </div>
       </div>
     </div>
 

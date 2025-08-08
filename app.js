@@ -36,6 +36,16 @@ const state = {
   },
 };
 
+// Playback tuning to keep motion musical and pleasant
+const playbackTuning = {
+  maxPixelsPerSecond: 700,    // clamp max travel speed
+  minSegmentSec: 0.12,        // ensure each hop has minimum duration
+  noteOverlapSec: 0.06,       // small overlap for smoother transitions
+  arcLiftMin: 20,
+  arcLiftMax: 60,
+  arcLiftFactor: 0.25,        // lift ~ 25% of dx
+};
+
 const themes = {
   classic: {
     fontFamily: 'Playfair Display',
@@ -391,6 +401,67 @@ function measureChar(container, ch, style) {
   return base + (ch === ' ' ? 0 : letterSpacing);
 }
 
+// Compute aligned layout target positions for all non-newline characters
+function layoutEventsAligned(container, events, align = state.align) {
+  const style = getComputedStyle(container);
+  const fontSize = parseFloat(style.fontSize) || 24;
+  const lineHeight = fontSize * 1.4;
+  const rect = container.getBoundingClientRect();
+  const maxWidth = rect.width;
+  const positions = [];
+
+  // Build lines from events
+  let currentLine = [];
+  let currentWidth = 0;
+  const lines = [];
+  const widths = [];
+  for (const ev of events) {
+    if (ev.char === '\n') {
+      lines.push({ glyphs: currentLine, total: currentWidth });
+      currentLine = [];
+      currentWidth = 0;
+      continue;
+    }
+    const w = measureChar(container, ev.char, style);
+    if (currentLine.length > 0 && currentWidth + w > maxWidth) {
+      lines.push({ glyphs: currentLine, total: currentWidth });
+      currentLine = [];
+      currentWidth = 0;
+    }
+    currentLine.push({ char: ev.char, width: w });
+    currentWidth += w;
+  }
+  lines.push({ glyphs: currentLine, total: currentWidth });
+
+  // Map glyph positions line by line
+  let y = 0;
+  for (let li = 0; li < lines.length; li += 1) {
+    const { glyphs, total } = lines[li];
+    if (glyphs.length === 0) {
+      // empty line
+      y += lineHeight;
+      continue;
+    }
+    let startX = 0;
+    let extraGap = 0;
+    const isLast = li === lines.length - 1;
+    if (align === 'center') {
+      startX = Math.max(0, (maxWidth - total) / 2);
+    } else if (align === 'right') {
+      startX = Math.max(0, maxWidth - total);
+    } else if (align === 'justify' && !isLast && glyphs.length > 1) {
+      extraGap = Math.max(0, (maxWidth - total) / (glyphs.length - 1));
+    }
+    let x = startX;
+    for (let gi = 0; gi < glyphs.length; gi += 1) {
+      positions.push({ x, y });
+      x += glyphs[gi].width + (gi < glyphs.length - 1 ? extraGap : 0);
+    }
+    y += lineHeight;
+  }
+  return { positions, lineHeight };
+}
+
 function recordEvent(char, note, position) {
   state.events.push({
     char,
@@ -424,12 +495,15 @@ function handleKeyDown(ev) {
   ensureAudio().then(() => playNote(note));
 
   const container = document.getElementById('textArea');
-  const pos = nextCaretPosition(container, char);
+  // Compute aligned target for this new char
+  const tempEvents = state.events.concat([{ char }]);
+  const layout = layoutEventsAligned(container, tempEvents, state.align);
+  const target = layout.positions[layout.positions.length - 1] || { x: 0, y: 0 };
   if (char !== '\n') {
-    createLetterSpan(char, container, pos.x, pos.y);
+    createLetterSpan(char, container, target.x, target.y);
   }
 
-  recordEvent(char, note, pos);
+  recordEvent(char, note, target);
   state.lastKeyTs = Date.now();
   scheduleInactivityPlayback();
 }
@@ -541,18 +615,29 @@ function playSequence() {
   const local = (pt) => ({ x: pt.x, y: pt.y });
   const playNoteAtIndex = (idx, when) => {
     const e = rel[idx];
-    if (e?.note) state.synth?.triggerAttackRelease(e.note, 0.22, when);
+    if (e?.note) {
+      // Slight voice overlap to avoid choppy transitions
+      state.synth?.triggerAttackRelease(e.note, 0.22 + playbackTuning.noteOverlapSec, when);
+    }
   };
   // Clear previous trail
   trailLayer.innerHTML = '';
+  const speedRatio = (state.playhead?.speedRatio) ?? 1.0;
+  const trailScale = (state.playhead?.trailScale) ?? 1.0;
   for (let i = 0; i < keyframes.length - 1; i += 1) {
     const a = local(keyframes[i]);
     const b = local(keyframes[i + 1]);
+    // Duration clamping by distance
+    const dx = b.x - a.x; const dy = b.y - a.y;
+    const dist = Math.hypot(dx, dy);
+    let segDur = (keyframes[i + 1].t - keyframes[i].t) * totalDur;
+    const speedLimited = dist / playbackTuning.maxPixelsPerSecond;
+    segDur = Math.max(playbackTuning.minSegmentSec, Math.max(segDur, speedLimited));
+    segDur = segDur / speedRatio; // apply style speed ratio
     // Arc control point: mid x between a and b, elevated y by -20..-60 px
     const midX = (a.x + b.x) / 2;
-    const lift = Math.max(20, Math.min(60, Math.abs(a.x - b.x) * 0.25));
+    const lift = Math.max(playbackTuning.arcLiftMin, Math.min(playbackTuning.arcLiftMax, Math.abs(a.x - b.x) * playbackTuning.arcLiftFactor));
     const cp = { x: midX, y: Math.min(a.y, b.y) - lift };
-    const segDur = (keyframes[i + 1].t - keyframes[i].t) * totalDur;
     tl.to(ball, {
       duration: segDur,
       motionPath: {
@@ -579,6 +664,7 @@ function playSequence() {
         dot.className = 'trail-dot';
         dot.style.left = `${r.left - rect.left + 3}px`;
         dot.style.top = `${r.top - rect.top + 3}px`;
+        dot.style.transform = `scale(${trailScale})`;
         trailLayer.appendChild(dot);
         gsap.to(dot, { opacity: 0, scale: 0.5, duration: 0.6, ease: 'power1.out', onComplete: () => dot.remove() });
       },
@@ -709,34 +795,14 @@ function reflowExistingLetters() {
   const letters = Array.from(container.querySelectorAll('.typed-letter'));
   if (letters.length === 0) return;
   if (state.physics.enabled) clearLetterBodies();
-  // Recompute positions using events order
-  if (nextCaretPosition.measurer) {
-    nextCaretPosition.measurer.remove();
-    nextCaretPosition.measurer = null;
-    nextCaretPosition.x = 0;
-    nextCaretPosition.y = 0;
-  }
-  const evs = state.events;
-  const { lineHeight, offsets } = computeLineLayoutOffsets(container);
+  // Compute aligned positions anew
+  const { positions } = layoutEventsAligned(container, state.events, state.align);
   // Reset DOM positions before re-adding bodies
   const containerRect = container.getBoundingClientRect();
   let letterIndex = 0;
-  const style = getComputedStyle(container);
-  const rect = container.getBoundingClientRect();
-  const padding = 0;
-  const maxWidth = rect.width - padding * 2;
-  let currentLineKey = 0; let currentOffset = 0; let spacingAdjust = 0; let cursorX = 0; let cursorY = 0;
-  for (const ev of evs) {
-    const pos = nextCaretPosition(container, ev.char);
-    // Alignment adjustments
-    const lineKey = Math.round(pos.y / lineHeight);
-    const found = offsets.find(o => o.key === lineKey);
-    const lineOffset = found ? found.offset : 0;
-    const extraSpace = found ? found.spacingAdjust : 0;
-    const measured = measureChar(container, ev.char, style);
-    const alignedX = (ev.char === '\n') ? 0 : (pos.x + lineOffset + (extraSpace && pos.x > 0 ? (Math.floor((pos.x) / measured) * extraSpace) : 0));
-    const alignedPos = { x: alignedX, y: pos.y };
+  for (const ev of state.events) {
     if (ev.char !== '\n') {
+      const alignedPos = positions[letterIndex];
       const el = letters[letterIndex++];
       if (!el) continue;
       if (state.physics.enabled) {
@@ -754,28 +820,10 @@ function reflowExistingLetters() {
 function snapLettersToTypesetGrid() {
   const container = document.getElementById('textArea');
   if (!container) return;
-  if (nextCaretPosition.measurer) {
-    nextCaretPosition.measurer.remove();
-    nextCaretPosition.measurer = null;
-    nextCaretPosition.x = 0;
-    nextCaretPosition.y = 0;
-  }
   const letters = Array.from(container.querySelectorAll('.typed-letter'));
   if (letters.length === 0) return;
   // Compute target positions per stored events order
-  const { lineHeight, offsets } = computeLineLayoutOffsets(container);
-  const style = getComputedStyle(container);
-  const targets = [];
-  for (const ev of state.events) {
-    const pos = nextCaretPosition(container, ev.char);
-    const lineKey = Math.round(pos.y / lineHeight);
-    const found = offsets.find(o => o.key === lineKey);
-    const lineOffset = found ? found.offset : 0;
-    const extraSpace = found ? found.spacingAdjust : 0;
-    const measured = measureChar(container, ev.char, style);
-    const alignedX = (ev.char === '\n') ? 0 : (pos.x + lineOffset + (extraSpace && pos.x > 0 ? (Math.floor((pos.x) / measured) * extraSpace) : 0));
-    if (ev.char !== '\n') targets.push({ x: alignedX, y: pos.y });
-  }
+  const { positions: targets } = layoutEventsAligned(container, state.events, state.align);
   const items = state.physics.letterBodies;
   const count = Math.min(items.length, targets.length);
   // Disable physics and tween letters into place
@@ -896,6 +944,8 @@ function init() {
   });
   const volumeRange = document.getElementById('volumeRange');
   volumeRange.addEventListener('input', (e) => setMasterVolumeDb(parseFloat(e.target.value)));
+  const playheadSelect = document.getElementById('playheadSelect');
+  playheadSelect.addEventListener('change', (e) => setPlayheadStyle(e.target.value));
 
   // Export/Import
   document.getElementById('exportJsonBtn').addEventListener('click', exportAsJson);
@@ -910,11 +960,43 @@ function init() {
 
   // Restore
   restoreFromStorage();
+
+  // Default playhead style
+  setPlayheadStyle('classic');
+
+  // Controls collapse/expand
+  const controls = document.getElementById('controls');
+  const toggle = document.getElementById('controlsToggle');
+  const setCollapsed = (collapsed) => {
+    controls.classList.toggle('collapsed', collapsed);
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+  };
+  toggle.addEventListener('click', () => {
+    const isCollapsed = controls.classList.contains('collapsed');
+    setCollapsed(!isCollapsed);
+  });
 }
 
 // Master volume
 function setMasterVolumeDb(db) {
   try { Tone.Destination.volume.value = db; } catch (_) {}
+}
+
+// Playhead appearance and behavior
+const playheadPresets = {
+  classic: { className: '', speedRatio: 1.0, trailScale: 1.0 },
+  comet: { className: 'comet', speedRatio: 0.9, trailScale: 1.5 },
+  star: { className: 'star', speedRatio: 1.05, trailScale: 1.0 },
+  heart: { className: 'heart', speedRatio: 0.95, trailScale: 1.2 },
+  flame: { className: 'flame', speedRatio: 0.85, trailScale: 1.8 },
+  kitten: { className: 'kitten', speedRatio: 0.9, trailScale: 1.0 },
+  diamond: { className: 'diamond', speedRatio: 1.1, trailScale: 0.9 },
+};
+
+function setPlayheadStyle(key) {
+  const ball = document.getElementById('ball');
+  state.playhead = playheadPresets[key] || playheadPresets.classic;
+  ball.className = `ball ${state.playhead.className}`.trim();
 }
 
 function exportAsJson() {
