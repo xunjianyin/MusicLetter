@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Music Letter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Playfair+Display:wght@400;600&family=EB+Garamond:wght@400;600&family=Merriweather:wght@400;700&family=Lora:wght@400;600&family=Cormorant+Garamond:wght@400;600&family=DM+Serif+Display&family=Libre+Baskerville:wght@400;700&family=Great+Vibes&family=Pacifico&family=Dancing+Script:wght@400;600&family=Cinzel+Decorative:wght@400;700&family=Playball&family=Lobster&family=Sacramento&family=Amatic+SC:wght@400;700&family=Caveat:wght@400;600&family=Abril+Fatface&family=Berkshire+Swash&family=Shadows+Into+Light&family=Indie+Flower&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="controls" role="toolbar" aria-label="Controls">
+      <div class="left-controls">
+        <label for="themeSelect">Theme</label>
+        <select id="themeSelect" aria-label="Select theme">
+          <option value="classic">Classic</option>
+          <option value="midnight">Midnight</option>
+          <option value="pastel">Pastel</option>
+        </select>
+        <label>Font</label>
+        <div class="font-picker" id="fontPicker">
+          <button id="fontPickerBtn" class="picker-btn" aria-haspopup="listbox" aria-expanded="false">Playfair Display</button>
+          <ul id="fontPickerList" class="picker-list" role="listbox" tabindex="-1" aria-label="Select font">
+            <li role="option" data-font="Playfair Display" style="font-family:'Playfair Display',serif">Playfair Display</li>
+            <li role="option" data-font="Poppins" style="font-family:Poppins,sans-serif">Poppins</li>
+            <li role="option" data-font="EB Garamond" style="font-family:'EB Garamond',serif">EB Garamond</li>
+            <li role="option" data-font="Merriweather" style="font-family:Merriweather,serif">Merriweather</li>
+            <li role="option" data-font="Lora" style="font-family:Lora,serif">Lora</li>
+            <li role="option" data-font="Cormorant Garamond" style="font-family:'Cormorant Garamond',serif">Cormorant Garamond</li>
+            <li role="option" data-font="DM Serif Display" style="font-family:'DM Serif Display',serif">DM Serif Display</li>
+            <li role="option" data-font="Libre Baskerville" style="font-family:'Libre Baskerville',serif">Libre Baskerville</li>
+            <li role="option" data-font="Great Vibes" style="font-family:'Great Vibes',cursive">Great Vibes</li>
+            <li role="option" data-font="Pacifico" style="font-family:Pacifico,cursive">Pacifico</li>
+            <li role="option" data-font="Dancing Script" style="font-family:'Dancing Script',cursive">Dancing Script</li>
+            <li role="option" data-font="Cinzel Decorative" style="font-family:'Cinzel Decorative',serif">Cinzel Decorative</li>
+            <li role="option" data-font="Playball" style="font-family:Playball,cursive">Playball</li>
+            <li role="option" data-font="Lobster" style="font-family:Lobster,cursive">Lobster</li>
+            <li role="option" data-font="Sacramento" style="font-family:Sacramento,cursive">Sacramento</li>
+            <li role="option" data-font="Amatic SC" style="font-family:'Amatic SC',cursive">Amatic SC</li>
+            <li role="option" data-font="Caveat" style="font-family:Caveat,cursive">Caveat</li>
+            <li role="option" data-font="Abril Fatface" style="font-family:'Abril Fatface',serif">Abril Fatface</li>
+            <li role="option" data-font="Berkshire Swash" style="font-family:'Berkshire Swash',cursive">Berkshire Swash</li>
+            <li role="option" data-font="Shadows Into Light" style="font-family:'Shadows Into Light',cursive">Shadows Into Light</li>
+            <li role="option" data-font="Indie Flower" style="font-family:'Indie Flower',cursive">Indie Flower</li>
+          </ul>
+        </div>
+        <label for="paletteSelect">Palette</label>
+        <select id="paletteSelect" aria-label="Select sound palette">
+          <option value="majorC">C Major</option>
+          <option value="minorA">A Minor</option>
+          <option value="pentatonicC">C Pentatonic</option>
+        </select>
+        <label for="alignSelect">Align</label>
+        <select id="alignSelect" aria-label="Text alignment">
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+          <option value="justify">Justify</option>
+        </select>
+      </div>
+      <div class="right-controls">
+        <button id="playBtn" aria-label="Play">Play</button>
+        <button id="clearBtn" aria-label="Clear">Clear</button>
+        <label for="soundSelect" class="control-label">Sound</label>
+        <select id="soundSelect" aria-label="Sound preset">
+          <option value="sine_soft">Sine Soft</option>
+          <option value="triangle_ambient">Triangle Ambient</option>
+          <option value="chime_fm">Chime FM</option>
+          <option value="pluck">Pluck</option>
+          <option value="saw_pad">Saw Pad</option>
+          <option value="epiano">E-Piano</option>
+          <option value="bell">Bell</option>
+        </select>
+        <label for="volumeRange" class="control-label">Vol</label>
+        <input id="volumeRange" type="range" min="-36" max="0" step="1" value="-12" aria-label="Master volume (dB)" />
+        <button id="exportJsonBtn" aria-label="Export JSON">Export JSON</button>
+        <button id="exportWavBtn" aria-label="Export WAV">Export WAV</button>
+        <button id="importBtn" aria-label="Import JSON">Import</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
+      </div>
+    </div>
+
+    <main class="stage">
+      <section id="letterSheet" class="letter-sheet" aria-label="Letter sheet" tabindex="0">
+        <div id="textArea" class="text-area" aria-live="polite"></div>
+        <div id="ball" class="ball" aria-hidden="true"></div>
+      </section>
+    </main>
+  </body>
+  </html>
+
+
