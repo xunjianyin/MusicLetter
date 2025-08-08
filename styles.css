@@ -242,9 +242,9 @@ button:active { transform: translateY(0); }
 .text-area::after {
   content: '';
   position: absolute;
-  width: 1em;
+  width: 0.5em; /* shorter caret */
   height: 2px;
-  background: var(--accent);
+  background: #000; /* black caret */
   top: calc(var(--cursor-y, 0px) + 1.1em);
   left: var(--cursor-x, 0);
   animation: cursorBlink 1.5s ease-in-out infinite;
