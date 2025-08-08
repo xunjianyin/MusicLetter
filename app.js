@@ -367,6 +367,22 @@ function calculateCursorFromLetterPositions(container) {
     return;
   }
   
+  // If the last input was a newline, move cursor to start of next line
+  const lastEventOverall = state.events[state.events.length - 1];
+  if (lastEventOverall && lastEventOverall.char === '\n') {
+    const layoutAfterPlaceholder = layoutEventsAligned(
+      container,
+      [...state.events, { char: 'M', note: null }],
+      state.align
+    );
+    const nextPos = layoutAfterPlaceholder.positions[layoutAfterPlaceholder.positions.length - 1];
+    if (nextPos) {
+      nextCaretPosition.x = nextPos.x;
+      nextCaretPosition.y = nextPos.y;
+      return;
+    }
+  }
+  
   // Get current aligned positions
   const { positions } = layoutEventsAligned(container, state.events, state.align);
   const nonNewlineEvents = state.events.filter(e => e.char !== '\n');
@@ -381,7 +397,7 @@ function calculateCursorFromLetterPositions(container) {
     nextCaretPosition.x = lastPos.x + charWidth;
     nextCaretPosition.y = lastPos.y;
   } else {
-    // Handle case where last event was a newline
+    // Handle case where last event produced a new line or there are no glyphs on the current line
     const layout = layoutEventsAligned(container, [...state.events, { char: 'M', note: null }], state.align);
     const nextPos = layout.positions[layout.positions.length - 1];
     if (nextPos) {
@@ -626,7 +642,15 @@ function handleKeyDown(ev) {
     scheduleInactivityPlayback();
     return;
   }
-  const char = ev.key.length === 1 ? ev.key : (ev.key === 'Enter' ? '\n' : '');
+  // Normalize input to handle Enter and Space reliably across browsers
+  let char = '';
+  if (ev.key === 'Enter') {
+    char = '\n';
+  } else if (ev.key === ' ' || ev.code === 'Space' || ev.key === 'Spacebar') {
+    char = ' ';
+  } else if (ev.key && ev.key.length === 1) {
+    char = ev.key;
+  }
   if (!char) return;
   ev.preventDefault();
 
