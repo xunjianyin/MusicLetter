@@ -6,6 +6,11 @@
   --font-sans: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
   --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --letter-spacing: 0.02em;
+  
+  /* Pattern variables */
+  --bg-pattern: none;
+  --paper-pattern: none;
+  --paper-texture: none;
 }
 
 /* Themes */
@@ -30,11 +35,110 @@
   --accent: #ff7aa2;
 }
 
+/* Pattern Themes */
+[data-pattern='plain'] {
+  --bg-pattern: none;
+  --paper-pattern: none;
+  --paper-texture: none;
+}
+
+[data-pattern='lined'] {
+  --paper-pattern: repeating-linear-gradient(
+    transparent,
+    transparent 33px,
+    rgba(0,0,0,0.1) 34px,
+    rgba(0,0,0,0.1) 35px
+  );
+  --paper-texture: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255,0,0,0.1) 2px, 
+    transparent 3px
+  );
+}
+
+[data-pattern='dotted'] {
+  --paper-pattern: radial-gradient(circle at 2px 2px, rgba(0,0,0,0.15) 1px, transparent 0);
+  --paper-texture: none;
+}
+
+[data-pattern='grid'] {
+  --paper-pattern: 
+    linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px);
+  --paper-texture: none;
+}
+
+[data-pattern='vintage'] {
+  --bg-pattern: 
+    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(120, 200, 200, 0.15) 0%, transparent 50%);
+  --paper-pattern: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 2px,
+      rgba(139, 69, 19, 0.03) 2px,
+      rgba(139, 69, 19, 0.03) 4px
+    );
+  --paper-texture: 
+    radial-gradient(circle at 1px 1px, rgba(139, 69, 19, 0.15) 1px, transparent 0);
+}
+
+[data-pattern='watercolor'] {
+  --bg-pattern: 
+    radial-gradient(ellipse at top left, rgba(255, 182, 193, 0.2) 0%, transparent 50%),
+    radial-gradient(ellipse at top right, rgba(173, 216, 230, 0.2) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom left, rgba(221, 160, 221, 0.2) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(255, 218, 185, 0.2) 0%, transparent 50%);
+  --paper-texture: 
+    radial-gradient(circle at 3px 3px, rgba(0,0,0,0.02) 2px, transparent 0);
+}
+
+[data-pattern='marble'] {
+  --paper-pattern: 
+    linear-gradient(45deg, 
+      transparent 25%, rgba(0,0,0,0.02) 25%, rgba(0,0,0,0.02) 50%, 
+      transparent 50%, transparent 75%, rgba(0,0,0,0.02) 75%
+    ),
+    linear-gradient(-45deg, 
+      transparent 25%, rgba(0,0,0,0.03) 25%, rgba(0,0,0,0.03) 50%, 
+      transparent 50%, transparent 75%, rgba(0,0,0,0.03) 75%
+    );
+  --paper-texture: 
+    radial-gradient(ellipse at 20% 20%, rgba(0,0,0,0.02) 0%, transparent 25%),
+    radial-gradient(ellipse at 80% 80%, rgba(0,0,0,0.02) 0%, transparent 25%);
+}
+
+[data-pattern='parchment'] {
+  --bg-pattern: 
+    radial-gradient(circle at 30% 20%, rgba(139, 69, 19, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(160, 82, 45, 0.1) 0%, transparent 50%);
+  --paper-pattern: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 8px,
+      rgba(139, 69, 19, 0.02) 8px,
+      rgba(139, 69, 19, 0.02) 16px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 12px,
+      rgba(160, 82, 45, 0.02) 12px,
+      rgba(160, 82, 45, 0.02) 24px
+    );
+  --paper-texture: 
+    radial-gradient(circle at 1px 1px, rgba(139, 69, 19, 0.08) 0.5px, transparent 0);
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
   margin: 0;
   background: var(--bg);
+  background-image: var(--bg-pattern);
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -108,23 +212,30 @@ button:active { transform: translateY(0); }
 .letter-sheet {
   position: relative;
   width: min(900px, 90vw);
-  height: min(70vh, 720px);
+  min-height: min(70vh, 720px);
+  max-height: 85vh;
   background: var(--paper);
+  background-image: var(--paper-pattern);
+  background-size: 20px 20px, 20px 20px;
   border-radius: 20px;
   box-shadow: 0 30px 80px rgba(0,0,0,0.15), 0 10px 24px rgba(0,0,0,0.08);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   outline: none;
+  scroll-behavior: smooth;
 }
 
 .text-area {
-  position: absolute;
-  inset: 40px 32px;
+  position: relative;
+  margin: 40px 32px;
+  min-height: calc(min(70vh, 720px) - 80px);
   font-size: clamp(20px, 3vw, 28px);
   line-height: 1.4;
   letter-spacing: var(--letter-spacing);
   color: var(--ink);
   text-align: var(--align, left);
   font-family: var(--font-serif);
+  z-index: 10;
 }
 
 .typed-letter {
@@ -137,7 +248,10 @@ button:active { transform: translateY(0); }
 }
 
 /* Custom font picker */
-.font-picker { position: relative; }
+.font-picker { 
+  position: relative; 
+  z-index: 9999;
+}
 .picker-btn {
   font-family: var(--font-sans);
   font-size: 14px;
@@ -160,7 +274,8 @@ button:active { transform: translateY(0); }
   padding: 6px 0;
   box-shadow: 0 10px 24px rgba(0,0,0,0.08);
   display: none;
-  z-index: 20;
+  z-index: 10000;
+  pointer-events: auto;
 }
 .picker-list.open { display: block; }
 .picker-list li {
@@ -168,6 +283,7 @@ button:active { transform: translateY(0); }
   padding: 8px 12px;
   cursor: pointer;
   color: var(--ink);
+  pointer-events: auto;
 }
 .picker-list li:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
@@ -186,21 +302,75 @@ button:active { transform: translateY(0); }
   pointer-events: none;
 }
 
-.ball.star { width: 18px; height: 18px; background: transparent; box-shadow: none; }
+/* Hide default ball appearance for styled playheads */
+.ball.star,
+.ball.heart, 
+.ball.kitten,
+.ball.flame,
+.ball.diamond,
+.ball.comet {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.ball.star { 
+  width: 18px; 
+  height: 18px; 
+}
 .ball.star::before {
   content: '★';
   display: block;
   font-size: 18px;
   color: var(--accent);
   filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 60%, transparent));
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  line-height: 18px;
 }
-.ball.heart { width: 18px; height: 18px; background: transparent; box-shadow: none; }
-.ball.heart::before { content: '❤'; font-size: 18px; color: var(--accent); filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 60%, transparent)); }
+.ball.heart { 
+  width: 18px; 
+  height: 18px; 
+}
+.ball.heart::before { 
+  content: '❤'; 
+  font-size: 18px; 
+  color: var(--accent); 
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 60%, transparent)); 
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  line-height: 18px;
+  display: block;
+}
 .ball.comet { width: 12px; height: 12px; background: var(--accent); box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 6px var(--accent); }
 .ball.diamond { width: 16px; height: 16px; background: var(--accent); transform: rotate(45deg); border-radius: 4px; }
 .ball.flame { width: 14px; height: 18px; background: radial-gradient(circle at 50% 20%, #ffd27a 0, #ff6b00 60%, transparent 70%); border-radius: 50% 50% 40% 40%; filter: drop-shadow(0 0 12px rgba(255,107,0,0.5)); }
-.ball.kitten { width: 18px; height: 18px; background: transparent; }
-.ball.kitten::before { content: '🐾'; font-size: 18px; }
+.ball.kitten { 
+  width: 18px; 
+  height: 18px; 
+}
+.ball.kitten::before { 
+  content: '🐾'; 
+  font-size: 18px; 
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  line-height: 18px;
+  display: block;
+}
 
 .trail-layer {
   position: absolute;
@@ -209,16 +379,88 @@ button:active { transform: translateY(0); }
 }
 .trail-dot {
   position: absolute;
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 80%, white 20%);
-  opacity: 0.8;
-  filter: blur(0.3px);
+  background: color-mix(in srgb, var(--accent) 90%, white 10%);
+  opacity: 0.9;
+  filter: blur(0.2px);
+  pointer-events: none;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* Trail dots that match playhead shapes */
+.trail-dot.star {
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  line-height: 12px;
+  text-align: center;
+}
+.trail-dot.star::before {
+  content: '★';
+  color: color-mix(in srgb, var(--accent) 80%, white 20%);
+  font-size: 12px;
+  filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--accent) 40%, transparent));
+}
+
+.trail-dot.heart {
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  line-height: 12px;
+  text-align: center;
+}
+.trail-dot.heart::before {
+  content: '❤';
+  color: color-mix(in srgb, var(--accent) 80%, white 20%);
+  font-size: 12px;
+  filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--accent) 40%, transparent));
+}
+
+.trail-dot.kitten {
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  line-height: 12px;
+  text-align: center;
+}
+.trail-dot.kitten::before {
+  content: '🐾';
+  font-size: 12px;
+}
+
+.trail-dot.flame {
+  background: radial-gradient(circle at 50% 20%, 
+    color-mix(in srgb, #ffd27a 70%, transparent 30%) 0, 
+    color-mix(in srgb, #ff6b00 70%, transparent 30%) 60%, 
+    transparent 70%);
+  border-radius: 50% 50% 40% 40%;
+}
+
+.trail-dot.diamond {
+  background: color-mix(in srgb, var(--accent) 70%, white 30%);
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.trail-dot.comet {
+  background: color-mix(in srgb, var(--accent) 70%, white 30%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 /* Subtle ruled lines effect */
 .letter-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--paper-texture);
+  background-size: 8px 8px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.letter-sheet::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -231,6 +473,7 @@ button:active { transform: translateY(0); }
   );
   opacity: 0.35;
   pointer-events: none;
+  z-index: 2;
 }
 
 

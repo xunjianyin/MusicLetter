@@ -13,6 +13,7 @@ if (window.gsap && window.MotionPathPlugin) {
 
 const state = {
   theme: 'classic',
+  pattern: 'plain',
   synth: null,
   effects: { reverb: null, delay: null },
   keyToNote: {},
@@ -99,6 +100,41 @@ function setTheme(theme) {
       configureSynthForTheme(theme);
     }
   } catch (_) {}
+}
+
+function setPattern(pattern) {
+  state.pattern = pattern;
+  document.documentElement.setAttribute('data-pattern', pattern);
+  persistToStorage();
+}
+
+function updateContainerHeight(container, positions) {
+  if (positions.length === 0) return;
+  
+  // Find the lowest position
+  const maxY = Math.max(...positions.map(p => p.y));
+  const style = getComputedStyle(container);
+  const fontSize = parseFloat(style.fontSize) || 24;
+  const lineHeight = fontSize * 1.4;
+  
+  // Calculate required height with padding
+  const requiredHeight = maxY + lineHeight + 40; // extra padding for bottom
+  const minHeight = parseFloat(getComputedStyle(container).minHeight) || 640;
+  const finalHeight = Math.max(requiredHeight, minHeight);
+  
+  // Update container height if needed
+  if (container.style.height !== `${finalHeight}px`) {
+    container.style.height = `${finalHeight}px`;
+    
+    // Auto-scroll to show the latest content if needed
+    const letterSheet = container.closest('.letter-sheet');
+    if (letterSheet && requiredHeight > minHeight) {
+      // Scroll to bottom with a small delay to allow DOM updates
+      setTimeout(() => {
+        letterSheet.scrollTop = letterSheet.scrollHeight - letterSheet.clientHeight;
+      }, 50);
+    }
+  }
 }
 
 /* Font management */
@@ -518,6 +554,9 @@ function handleKeyDown(ev) {
   // Update positions of ALL existing letters to maintain alignment
   const letters = Array.from(container.querySelectorAll('.typed-letter'));
   
+  // Expand container height to accommodate content
+  updateContainerHeight(container, allPositions);
+  
   // Kill any existing positioning animations to prevent overlaps during fast typing
   // But don't kill the drop animation of the newly created letter
   const existingLetters = char !== '\n' ? letters.slice(0, -1) : letters;
@@ -615,18 +654,48 @@ function clearAll() {
 }
 
 function buildMotionPathFromEvents(containerRect) {
-  // Build simple path that visits top of each letter position
-  // We don't have per-letter DOM refs saved; use recorded x,y with a small offset
-  const points = state.events
-    .filter(e => e.char !== '\n')
-    .map(e => ({ x: e.x + 8, y: e.y + 8 }));
+  // Build path using actual current letter positions from DOM
+  const container = document.getElementById('textArea');
+  const letterSheet = document.getElementById('letterSheet');
+  const letters = Array.from(container.querySelectorAll('.typed-letter'));
+  const letterSheetRect = letterSheet.getBoundingClientRect();
+  
+  const points = letters.map(letter => {
+    const letterRect = letter.getBoundingClientRect();
+    // Convert to letter-sheet-relative coordinates (since ball is positioned relative to letter-sheet)
+    const x = letterRect.left - letterSheetRect.left + letterRect.width / 2;
+    const y = letterRect.top - letterSheetRect.top + letterRect.height / 2;
+    return { x, y };
+  });
+  
   if (points.length === 0) return null;
   return points;
+}
+
+function stopPlayback() {
+  const ball = document.getElementById('ball');
+  const trailLayer = document.getElementById('trailLayer');
+  
+  // Stop all animations and hide ball
+  gsap.killTweensOf(ball);
+  gsap.set(ball, { opacity: 0 });
+  
+  // Clear trail
+  if (trailLayer) trailLayer.innerHTML = '';
+  
+  // Stop audio transport
+  if (Tone.Transport.state === 'started') {
+    Tone.Transport.stop();
+    Tone.Transport.position = 0;
+  }
 }
 
 function playSequence() {
   if (!state.events.length) return;
   ensureAudio();
+  
+  // Stop any existing playback first
+  stopPlayback();
 
   const ball = document.getElementById('ball');
   const trailLayer = document.getElementById('trailLayer');
@@ -648,8 +717,27 @@ function playSequence() {
   // Compute total duration slightly beyond last event
   const totalDur = (rel[rel.length - 1].t || 0) + 0.35;
 
-  // Show ball
-  gsap.set(ball, { opacity: 1 });
+  // Clean up any existing animations and trail, then show ball
+  gsap.killTweensOf(ball);
+  trailLayer.innerHTML = ''; // Clear trail first
+  
+  // Position ball at the first letter but keep it invisible (only trail will show)
+  const firstPoint = points[0];
+  gsap.set(ball, { 
+    opacity: 0, // Hide the main ball - only trail will be visible
+    x: firstPoint.x, 
+    y: firstPoint.y, 
+    scale: 1,
+    rotation: 0,
+    transformOrigin: 'center center'
+  });
+  
+  // Ensure the ball has the correct playhead style applied for trail matching
+  if (state.playhead && state.playhead.className) {
+    ball.className = `ball ${state.playhead.className}`;
+  } else {
+    ball.className = 'ball';
+  }
 
   // Build bezier arcs between successive points
   const lastT = rel[rel.length - 1].t || 0.0001;
@@ -665,7 +753,6 @@ function playSequence() {
   }
 
   // Build a piecewise timeline using quadratic bezier curves to simulate arcs
-  gsap.set(ball, { opacity: 1 });
   const tl = gsap.timeline({ defaults: { ease: 'power1.inOut' } });
   const local = (pt) => ({ x: pt.x, y: pt.y });
   const playNoteAtIndex = (idx, when) => {
@@ -675,8 +762,6 @@ function playSequence() {
       state.synth?.triggerAttackRelease(e.note, 0.22 + playbackTuning.noteOverlapSec, when);
     }
   };
-  // Clear previous trail
-  trailLayer.innerHTML = '';
   const speedRatio = (state.playhead?.speedRatio) ?? 1.0;
   const trailScale = (state.playhead?.trailScale) ?? 1.0;
   for (let i = 0; i < keyframes.length - 1; i += 1) {
@@ -713,20 +798,27 @@ function playSequence() {
         playNoteAtIndex(i + 1, '+0');
       },
       onUpdate: () => {
-        // Trail effect
+        // Trail effect that matches the playhead shape
         const r = ball.getBoundingClientRect();
         const dot = document.createElement('div');
-        dot.className = 'trail-dot';
-        dot.style.left = `${r.left - rect.left + 3}px`;
-        dot.style.top = `${r.top - rect.top + 3}px`;
-        dot.style.transform = `scale(${trailScale})`;
+        
+        // Make trail dot match the playhead style
+        dot.className = `trail-dot ${state.playhead?.className || ''}`.trim();
+        
+        // Position the trail dot at the center of the ball
+        const ballCenterX = r.left - rect.left + r.width / 2;
+        const ballCenterY = r.top - rect.top + r.height / 2;
+        dot.style.left = `${ballCenterX - 6}px`; // Center the 12px dot
+        dot.style.top = `${ballCenterY - 6}px`;
+        dot.style.transform = `scale(${trailScale})`; // Full size trail dots
+        
         trailLayer.appendChild(dot);
-        gsap.to(dot, { opacity: 0, scale: 0.5, duration: 0.6, ease: 'power1.out', onComplete: () => dot.remove() });
+        gsap.to(dot, { opacity: 0, scale: 0.3, duration: 0.6, ease: 'power1.out', onComplete: () => dot.remove() });
       },
     }, i === 0 ? 0 : undefined);
   }
-  tl.to(ball, { opacity: 0, duration: 0.3 });
-
+  // No need to fade out ball since it's already hidden
+  
   Tone.Transport.stop();
   Tone.Transport.position = 0;
   Tone.Transport.start('+0.05');
@@ -852,6 +944,8 @@ function reflowExistingLetters() {
   if (state.physics.enabled) clearLetterBodies();
   // Compute aligned positions anew
   const { positions } = layoutEventsAligned(container, state.events, state.align);
+  // Update container height for new positions
+  updateContainerHeight(container, positions);
   // Reset DOM positions before re-adding bodies
   const containerRect = container.getBoundingClientRect();
   let letterIndex = 0;
@@ -906,6 +1000,7 @@ function persistToStorage() {
   try {
     const data = {
       theme: state.theme,
+      pattern: state.pattern,
       font: getComputedStyle(document.documentElement).getPropertyValue('--font-serif') || 'Playfair Display',
       palette: document.getElementById('paletteSelect')?.value || 'majorC',
       events: state.events,
@@ -920,6 +1015,7 @@ function restoreFromStorage() {
     if (!raw) return;
     const data = JSON.parse(raw);
     if (data.theme) setTheme(data.theme);
+    if (data.pattern) setPattern(data.pattern);
     if (data.font) setFont(String(data.font).replace(/['",]/g, '').trim());
     if (data.palette) {
       const ps = document.getElementById('paletteSelect');
@@ -954,7 +1050,21 @@ function init() {
 
   const sheet = document.getElementById('letterSheet');
   sheet.addEventListener('keydown', handleKeyDown);
-  sheet.addEventListener('pointerdown', () => sheet.focus());
+  sheet.addEventListener('pointerdown', (e) => {
+    // Don't focus if the click is within the font picker area
+    const fontPicker = document.getElementById('fontPicker');
+    const fontPickerRect = fontPicker.getBoundingClientRect();
+    const isInFontPicker = (
+      e.clientX >= fontPickerRect.left && 
+      e.clientX <= fontPickerRect.right && 
+      e.clientY >= fontPickerRect.top && 
+      e.clientY <= fontPickerRect.bottom
+    );
+    
+    if (!isInFontPicker) {
+      sheet.focus();
+    }
+  });
   sheet.focus();
 
   document.getElementById('playBtn').addEventListener('click', playSequence);
@@ -962,6 +1072,8 @@ function init() {
 
   const themeSelect = document.getElementById('themeSelect');
   themeSelect.addEventListener('change', (e) => setTheme(e.target.value));
+  const patternSelect = document.getElementById('patternSelect');
+  patternSelect.addEventListener('change', (e) => setPattern(e.target.value));
   // Custom font picker
   const fontPickerBtn = document.getElementById('fontPickerBtn');
   const fontPickerList = document.getElementById('fontPickerList');
@@ -975,16 +1087,92 @@ function init() {
     fontPickerBtn.setAttribute('aria-expanded', String(open));
     if (open) fontPickerList.focus();
   });
+  // Enhanced font picker click handling with mouse position detection
+  // Use capture phase to ensure we get the event first
   fontPickerList.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     const li = e.target.closest('li');
     if (!li) return;
     const font = li.getAttribute('data-font');
     fontPickerBtn.textContent = font;
     setFont(font);
     closeList();
+  }, true); // Use capture phase
+  
+  // Also add mousedown handler as backup
+  fontPickerList.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  
+  // Add direct event listeners to each font item as additional safeguard
+  const fontItems = fontPickerList.querySelectorAll('li');
+  fontItems.forEach(li => {
+    li.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const font = li.getAttribute('data-font');
+      if (font) {
+        fontPickerBtn.textContent = font;
+        setFont(font);
+        closeList();
+      }
+    }, true); // Use capture phase
+    
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
   });
+  
+  // Add mouse position detection for font picker area
   document.addEventListener('click', (e) => {
-    if (!fontPicker.contains(e.target)) closeList();
+    const fontPickerRect = fontPicker.getBoundingClientRect();
+    const fontPickerListRect = fontPickerList.getBoundingClientRect();
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+    
+    // Check if click is within font picker button area
+    const isInButton = (
+      mouseX >= fontPickerRect.left && 
+      mouseX <= fontPickerRect.right && 
+      mouseY >= fontPickerRect.top && 
+      mouseY <= fontPickerRect.bottom
+    );
+    
+    // Check if click is within font picker list area (when open)
+    const isInList = fontPickerList.classList.contains('open') && (
+      mouseX >= fontPickerListRect.left && 
+      mouseX <= fontPickerListRect.right && 
+      mouseY >= fontPickerListRect.top && 
+      mouseY <= fontPickerListRect.bottom
+    );
+    
+    // If clicking within the font picker area, handle font selection
+    if (isInList) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Find which li element was clicked
+      const listItems = fontPickerList.querySelectorAll('li');
+      for (const li of listItems) {
+        const liRect = li.getBoundingClientRect();
+        if (mouseX >= liRect.left && mouseX <= liRect.right && 
+            mouseY >= liRect.top && mouseY <= liRect.bottom) {
+          const font = li.getAttribute('data-font');
+          fontPickerBtn.textContent = font;
+          setFont(font);
+          closeList();
+          return;
+        }
+      }
+    }
+    
+    // Close list if clicking outside font picker
+    if (!isInButton && !isInList) {
+      closeList();
+    }
   });
   const paletteSelect = document.getElementById('paletteSelect');
   paletteSelect.addEventListener('change', (e) => {
@@ -1048,10 +1236,15 @@ const playheadPresets = {
   diamond: { className: 'diamond', speedRatio: 1.1, trailScale: 0.9 },
 };
 
-function setPlayheadStyle(key) {
+function setPlayheadStyle(style) {
   const ball = document.getElementById('ball');
-  state.playhead = playheadPresets[key] || playheadPresets.classic;
-  ball.className = `ball ${state.playhead.className}`.trim();
+  state.playhead = playheadPresets[style] || playheadPresets.classic;
+  
+  // Clear any existing classes and apply new one
+  ball.className = 'ball';
+  if (state.playhead.className) {
+    ball.classList.add(state.playhead.className);
+  }
 }
 
 function exportAsJson() {
