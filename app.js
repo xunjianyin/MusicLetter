@@ -254,6 +254,11 @@ function createLetterSpan(char, container, x, y, animate = true) {
         top: targetTop,
         duration: 0.75,
         ease: 'power3.out',
+        onComplete: () => {
+          // Ensure final position is set precisely
+          span.style.left = `${targetLeft}px`;
+          span.style.top = `${targetTop}px`;
+        }
       });
     } else {
       span.style.left = `${targetLeft}px`;
@@ -495,15 +500,65 @@ function handleKeyDown(ev) {
   ensureAudio().then(() => playNote(note));
 
   const container = document.getElementById('textArea');
-  // Compute aligned target for this new char
-  const tempEvents = state.events.concat([{ char }]);
-  const layout = layoutEventsAligned(container, tempEvents, state.align);
-  const target = layout.positions[layout.positions.length - 1] || { x: 0, y: 0 };
+  
+  // Record the event first
+  const pos = { x: 0, y: 0 }; // temporary, will be updated
+  recordEvent(char, note, pos);
+  
+  // Compute aligned positions for ALL events including the new one
+  const layout = layoutEventsAligned(container, state.events, state.align);
+  const allPositions = layout.positions;
+  
+  // Create the new letter span if not newline
   if (char !== '\n') {
-    createLetterSpan(char, container, target.x, target.y);
+    const target = allPositions[allPositions.length - 1] || { x: 0, y: 0 };
+    createLetterSpan(char, container, target.x, target.y, true);
+  }
+  
+  // Update positions of ALL existing letters to maintain alignment
+  const letters = Array.from(container.querySelectorAll('.typed-letter'));
+  
+  // Kill any existing positioning animations to prevent overlaps during fast typing
+  // But don't kill the drop animation of the newly created letter
+  const existingLetters = char !== '\n' ? letters.slice(0, -1) : letters;
+  gsap.killTweensOf(existingLetters);
+  
+  // Count how many non-newline events we have (should match letters.length)
+  const nonNewlineEvents = state.events.filter(ev => ev.char !== '\n').length;
+  const isNewLetter = char !== '\n';
+  const existingLetterCount = isNewLetter ? letters.length - 1 : letters.length;
+  
+  let letterIndex = 0;
+  for (let i = 0; i < state.events.length; i++) {
+    const ev = state.events[i];
+    if (ev.char !== '\n' && letterIndex < letters.length && letterIndex < allPositions.length) {
+      const el = letters[letterIndex];
+      const target = allPositions[letterIndex];
+      // Update event position for consistency
+      ev.x = target.x;
+      ev.y = target.y;
+      
+      // For fast typing, use shorter duration; for slow typing, use smoother animation
+      const now = Date.now();
+      const timeSinceLastKey = now - (state.lastKeyTs || 0);
+      const isFastTyping = timeSinceLastKey < 150; // Less than 150ms between keys
+      const duration = isFastTyping ? 0.1 : 0.3;
+      
+      // Animate existing letters to new positions (all letters should be positioned)
+      // Only skip animation for the very last letter if it was just created
+      const isLastLetterJustCreated = isNewLetter && letterIndex === letters.length - 1;
+      if (!isLastLetterJustCreated) {
+        gsap.to(el, { 
+          left: target.x, 
+          top: target.y, 
+          duration: duration, 
+          ease: isFastTyping ? 'power1.out' : 'power2.out'
+        });
+      }
+      letterIndex++;
+    }
   }
 
-  recordEvent(char, note, target);
   state.lastKeyTs = Date.now();
   scheduleInactivityPlayback();
 }
