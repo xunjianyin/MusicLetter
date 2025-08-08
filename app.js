@@ -86,12 +86,15 @@ const palettes = {
 };
 
 function buildKeyToNote(paletteName) {
-  const letters = 'abcdefghijklmnopqrstuvwxyz';
   const pool = palettes[paletteName] || palettes.majorC;
   const mapping = {};
-  for (let i = 0; i < letters.length; i += 1) {
-    mapping[letters[i]] = pool[i % pool.length];
+  // Map letters, digits, and common punctuation to notes cyclically
+  const charset = 'abcdefghijklmnopqrstuvwxyz0123456789.,;:!?\'"()[]{}-_/\\|@#$%^&*+=<>~`';
+  for (let i = 0; i < charset.length; i += 1) {
+    const ch = charset[i];
+    mapping[ch] = pool[i % pool.length];
   }
+  // Keep whitespace silent
   mapping[' '] = null; // space: no note
   mapping['\n'] = null; // enter: no note
   return mapping;
