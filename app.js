@@ -808,6 +808,12 @@ function clearWelcomeText() {
 }
 
 function clearAll() {
+  // Stop any ongoing playback and timers first
+  try { stopPlayback(); } catch (_) {}
+  if (state.scheduledTimeout) {
+    clearTimeout(state.scheduledTimeout);
+    state.scheduledTimeout = null;
+  }
   state.events = [];
   const container = document.getElementById('textArea');
   container.innerHTML = '';
@@ -820,6 +826,12 @@ function clearAll() {
   }
   // clear physics bodies
   clearLetterBodies();
+  // Clear any remaining trail artifacts explicitly
+  const trailLayer = document.getElementById('trailLayer');
+  if (trailLayer) trailLayer.innerHTML = '';
+  const ball = document.getElementById('ball');
+  try { gsap.killTweensOf(ball); } catch (_) {}
+  gsap.set(ball, { opacity: 0 });
   // Reset cursor position
   initializeCursor(container);
   // Show welcome text again
