@@ -16,7 +16,7 @@
   </head>
   <body>
     <div class="controls collapsed" id="controls" role="toolbar" aria-label="Controls">
-      <button id="controlsToggle" class="controls-toggle" aria-label="Toggle controls" aria-expanded="false">⚙️</button>
+      <button id="controlsToggle" class="controls-toggle" aria-label="Toggle controls" aria-expanded="false">✉️</button>
       <div class="controls-content">
       <div class="left-controls">
         <label for="themeSelect">Theme</label>
@@ -38,7 +38,7 @@
         </select>
         <label>Font</label>
         <div class="font-picker" id="fontPicker">
-          <button id="fontPickerBtn" class="picker-btn" aria-haspopup="listbox" aria-expanded="false">Playfair Display</button>
+          <button id="fontPickerBtn" class="picker-btn" aria-haspopup="listbox" aria-expanded="false">Pacifico</button>
           <ul id="fontPickerList" class="picker-list" role="listbox" tabindex="-1" aria-label="Select font">
             <li role="option" data-font="Playfair Display" style="font-family:'Playfair Display',serif">Playfair Display</li>
             <li role="option" data-font="Poppins" style="font-family:Poppins,sans-serif">Poppins</li>
@@ -102,6 +102,10 @@
         </select>
         <label for="volumeRange" class="control-label">Vol</label>
         <input id="volumeRange" type="range" min="-36" max="0" step="1" value="-12" aria-label="Master volume (dB)" />
+        <label for="elasticityRange" class="control-label">Bounce</label>
+        <input id="elasticityRange" type="range" min="0" max="1" step="0.1" value="0.8" aria-label="Playhead elasticity" />
+        <label for="timingRange" class="control-label">Tempo</label>
+        <input id="timingRange" type="range" min="0.5" max="3.0" step="0.1" value="1.0" aria-label="Playback timing" />
         <button id="exportJsonBtn" aria-label="Export JSON">Export JSON</button>
         <button id="exportWavBtn" aria-label="Export WAV">Export WAV</button>
         <button id="importBtn" aria-label="Import JSON">Import</button>

@@ -23,6 +23,8 @@ const state = {
   scheduledTimeout: null,
   animationMode: 'arc', // 'arc' | 'physics'
   align: 'left', // 'left' | 'center' | 'right' | 'justify'
+  welcomeText: 'Hi,\nJust typing.\nTurn poetry into song.',
+  welcomeShown: true,
   // Physics
   physics: {
     engine: null,
@@ -45,6 +47,12 @@ const playbackTuning = {
   arcLiftMin: 20,
   arcLiftMax: 60,
   arcLiftFactor: 0.25,        // lift ~ 25% of dx
+  // Timing thresholds for pleasant playback
+  minTimeBetweenNotes: 0.08,  // minimum time between notes (seconds)
+  maxTimeBetweenNotes: 2.0,   // maximum time between notes (seconds)
+  // Elasticity settings
+  letterElasticity: 0.5,      // letter bounce/restitution (0-1)
+  playheadElasticity: 0.8,    // playhead bounce factor (0-2)
 };
 
 const themes = {
@@ -188,9 +196,13 @@ function setAlign(align) {
 }
 
 async function ensureAudio() {
+  console.log('ensureAudio called, synth exists:', !!state.synth);
   if (!state.synth) {
+    console.log('Starting Tone.js...');
     await Tone.start();
+    console.log('Tone started, configuring synth for theme:', state.theme);
     configureSynthForTheme(state.theme);
+    console.log('Synth configured:', !!state.synth);
   }
 }
 
@@ -309,6 +321,21 @@ function createLetterSpan(char, container, x, y, animate = true) {
     addLetterBody(span, localX, localY, targetTop);
   }
   return span;
+}
+
+function updateCursorPosition(container) {
+  // Update the visual cursor position based on current caret position
+  const x = nextCaretPosition.x || 0;
+  const y = nextCaretPosition.y || 0;
+  container.style.setProperty('--cursor-x', `${x}px`);
+  container.style.setProperty('--cursor-y', `${y}px`);
+}
+
+function initializeCursor(container) {
+  // Initialize cursor position at start
+  nextCaretPosition.x = 0;
+  nextCaretPosition.y = 0;
+  updateCursorPosition(container);
 }
 
 function nextCaretPosition(container, char) {
@@ -516,10 +543,23 @@ function recordEvent(char, note, position) {
 
 function scheduleInactivityPlayback() {
   if (state.scheduledTimeout) clearTimeout(state.scheduledTimeout);
-  state.scheduledTimeout = setTimeout(() => playSequence(), state.inactivityMs);
+  state.scheduledTimeout = setTimeout(() => {
+    // Only play if there are events with notes to play
+    const eventsWithNotes = state.events.filter(e => e.note);
+    console.log('Inactivity timeout triggered. Events with notes:', eventsWithNotes.length);
+    if (eventsWithNotes.length > 0) {
+      console.log('Starting playback...');
+      playSequence().catch(err => console.error('Playback failed:', err));
+    }
+  }, state.inactivityMs);
 }
 
 function handleKeyDown(ev) {
+  // Clear welcome text on first interaction
+  if (state.welcomeShown) {
+    clearWelcomeText();
+  }
+  
   if (ev.key === 'Backspace' || ev.key === 'Delete') {
     ev.preventDefault();
     deleteLast();
@@ -599,6 +639,10 @@ function handleKeyDown(ev) {
   }
 
   state.lastKeyTs = Date.now();
+  
+  // Update cursor position to show where next character will appear
+  updateCursorPosition(container);
+  
   scheduleInactivityPlayback();
 }
 
@@ -622,6 +666,9 @@ function deleteLast() {
   persistToStorage();
   // Reflow the remaining letters to updated optimal positions
   reflowExistingLetters();
+  // Update cursor position
+  const container = document.getElementById('textArea');
+  updateCursorPosition(container);
 }
 
 function removeLetterBodyByElement(el) {
@@ -637,6 +684,41 @@ function removeLetterBodyByElement(el) {
   }
 }
 
+function showWelcomeText() {
+  if (!state.welcomeShown) return;
+  
+  const container = document.getElementById('textArea');
+  const welcomeDiv = document.createElement('div');
+  welcomeDiv.id = 'welcomeText';
+  welcomeDiv.className = 'welcome-text';
+  welcomeDiv.innerHTML = state.welcomeText.replace(/\n/g, '<br>');
+  container.appendChild(welcomeDiv);
+  
+  // Fade in the welcome text
+  gsap.fromTo(welcomeDiv, 
+    { opacity: 0, y: 20 }, 
+    { opacity: 0.7, y: 0, duration: 1.2, ease: 'power2.out' }
+  );
+}
+
+function clearWelcomeText() {
+  const welcomeDiv = document.getElementById('welcomeText');
+  if (welcomeDiv) {
+    gsap.to(welcomeDiv, {
+      opacity: 0,
+      y: -10,
+      duration: 0.5,
+      ease: 'power2.in',
+      onComplete: () => welcomeDiv.remove()
+    });
+  }
+  state.welcomeShown = false;
+  
+  // Update cursor position after clearing welcome text
+  const container = document.getElementById('textArea');
+  updateCursorPosition(container);
+}
+
 function clearAll() {
   state.events = [];
   const container = document.getElementById('textArea');
@@ -650,23 +732,30 @@ function clearAll() {
   }
   // clear physics bodies
   clearLetterBodies();
+  // Reset cursor position
+  initializeCursor(container);
+  // Show welcome text again
+  state.welcomeShown = true;
+  showWelcomeText();
   persistToStorage();
 }
 
 function buildMotionPathFromEvents(containerRect) {
-  // Build path using actual current letter positions from DOM
+  // Build path using stored event positions (more reliable than DOM elements)
   const container = document.getElementById('textArea');
   const letterSheet = document.getElementById('letterSheet');
-  const letters = Array.from(container.querySelectorAll('.typed-letter'));
   const letterSheetRect = letterSheet.getBoundingClientRect();
+  const containerRect2 = container.getBoundingClientRect();
   
-  const points = letters.map(letter => {
-    const letterRect = letter.getBoundingClientRect();
-    // Convert to letter-sheet-relative coordinates (since ball is positioned relative to letter-sheet)
-    const x = letterRect.left - letterSheetRect.left + letterRect.width / 2;
-    const y = letterRect.top - letterSheetRect.top + letterRect.height / 2;
-    return { x, y };
-  });
+  // Get points from events that have notes (visible letters)
+  const points = state.events
+    .filter(e => e.note && e.char !== '\n') // Only events with notes and not newlines
+    .map(event => {
+      // Convert stored positions to letter-sheet-relative coordinates
+      const x = event.x + (containerRect2.left - letterSheetRect.left) + 32; // Add margin offset
+      const y = event.y + (containerRect2.top - letterSheetRect.top) + 40; // Add margin offset
+      return { x, y };
+    });
   
   if (points.length === 0) return null;
   return points;
@@ -690,9 +779,18 @@ function stopPlayback() {
   }
 }
 
-function playSequence() {
+async function playSequence() {
+  console.log('playSequence called, events:', state.events.length);
   if (!state.events.length) return;
-  ensureAudio();
+  
+  // Check if there are any events with notes to play
+  const eventsWithNotes = state.events.filter(e => e.note);
+  console.log('Events with notes:', eventsWithNotes.length);
+  if (eventsWithNotes.length === 0) return;
+  
+  console.log('Ensuring audio...');
+  await ensureAudio();
+  console.log('Audio ready, synth:', !!state.synth);
   
   // Stop any existing playback first
   stopPlayback();
@@ -704,15 +802,38 @@ function playSequence() {
   const points = buildMotionPathFromEvents(rect);
   if (!points || points.length === 0) return;
 
-  // Normalize times relative to the first event
-  const startTime = state.events[0].time;
-  const rel = state.events.map(e => ({ ...e, t: Math.max(0, e.time - startTime) }));
+  // Normalize times relative to the first event with timing adjustments
+  // Use only events with notes for timing calculations
+  const noteEvents = state.events.filter(e => e.note);
+  const startTime = noteEvents[0].time;
+  
+  // First pass: create basic timing array
+  const rel = noteEvents.map((e, i) => ({
+    ...e,
+    t: Math.max(0, e.time - startTime)
+  }));
+  
+  // Second pass: apply timing thresholds for pleasant playback
+  for (let i = 1; i < rel.length; i++) {
+    const prevTime = rel[i - 1].t;
+    const timeDiff = rel[i].t - prevTime;
+    
+    // Clamp timing between notes to pleasant range
+    if (timeDiff < playbackTuning.minTimeBetweenNotes) {
+      rel[i].t = prevTime + playbackTuning.minTimeBetweenNotes;
+    } else if (timeDiff > playbackTuning.maxTimeBetweenNotes) {
+      rel[i].t = prevTime + playbackTuning.maxTimeBetweenNotes;
+    }
+  }
 
   // Create a Tone.Part to schedule in order (will be triggered by onUpdate sync)
+  console.log('Creating Tone.Part with', rel.length, 'note events');
   const part = new Tone.Part((time, value) => {
+    console.log('Playing note:', value.note, 'at time:', time);
     if (value.note) state.synth?.triggerAttackRelease(value.note, 0.22, time);
   }, rel.map((e, i) => [e.t, { note: e.note, index: i }]));
   part.start(0);
+  console.log('Tone.Part started');
 
   // Compute total duration slightly beyond last event
   const totalDur = (rel[rel.length - 1].t || 0) + 0.35;
@@ -786,9 +907,13 @@ function playSequence() {
           { x: cp.x, y: cp.y },
           { x: b.x, y: b.y },
         ],
-        curviness: 1,
+        curviness: 1.2 * playbackTuning.playheadElasticity,
         autoRotate: false,
       },
+      // Add bouncy, lively animation
+      scale: `${0.8 + 0.4 * playbackTuning.playheadElasticity}`,
+      rotation: `${Math.random() * 20 - 10}deg`,
+      ease: `elastic.out(${playbackTuning.playheadElasticity}, 0.3)`,
       onStart: () => {
         // On landing at a (except first), play previous note
         if (i === 0) playNoteAtIndex(0, '+0');
@@ -819,9 +944,10 @@ function playSequence() {
   }
   // No need to fade out ball since it's already hidden
   
-  Tone.Transport.stop();
-  Tone.Transport.position = 0;
+  // Start transport immediately to ensure Part can schedule properly
+  console.log('Starting Tone.Transport...');
   Tone.Transport.start('+0.05');
+  console.log('Transport started, state:', Tone.Transport.state);
 }
 
 // Physics integration with Matter.js
@@ -888,7 +1014,7 @@ function addLetterBody(el, x, startY, baselineTop) {
   const height = fontSize * 1.1;
   // Position in physics space (textArea local coords)
   const body = Bodies.rectangle(x + width / 2, startY, Math.max(8, width), Math.max(14, height), {
-    restitution: 0.5,
+    restitution: playbackTuning.letterElasticity,
     friction: 0.4,
     density: 0.0015,
   });
@@ -964,6 +1090,9 @@ function reflowExistingLetters() {
       }
     }
   }
+  
+  // Update cursor position after reflow
+  updateCursorPosition(container);
 }
 
 function snapLettersToTypesetGrid() {
@@ -1043,11 +1172,18 @@ function restoreFromStorage() {
 }
 
 function init() {
-  // Set default theme
-  setTheme('classic');
+  // Set default theme and sound palette
+  state.theme = 'classic';
   document.documentElement.setAttribute('data-theme', 'classic');
-  // Default font spacing assignment handled by setTheme
-
+  state.keyToNote = buildKeyToNote(themes['classic']?.soundPalette || 'majorC');
+  
+  // Configure synth for theme
+  try {
+    if (Tone.getContext().state === 'running' && state.synth) {
+      configureSynthForTheme('classic');
+    }
+  } catch (_) {}
+  
   const sheet = document.getElementById('letterSheet');
   sheet.addEventListener('keydown', handleKeyDown);
   sheet.addEventListener('pointerdown', (e) => {
@@ -1062,6 +1198,10 @@ function init() {
     );
     
     if (!isInFontPicker) {
+      // Clear welcome text on first click
+      if (state.welcomeShown) {
+        clearWelcomeText();
+      }
       sheet.focus();
     }
   });
@@ -1081,6 +1221,9 @@ function init() {
   const closeList = () => {
     fontPickerList.classList.remove('open');
     fontPickerBtn.setAttribute('aria-expanded', 'false');
+    // Clear any highlights when closing
+    const listItems = fontPickerList.querySelectorAll('li');
+    listItems.forEach(li => li.classList.remove('highlighted'));
   };
   fontPickerBtn.addEventListener('click', () => {
     const open = fontPickerList.classList.toggle('open');
@@ -1125,6 +1268,86 @@ function init() {
       e.stopPropagation();
     }, true);
   });
+  
+  // Add scroll handling for font picker
+  let fontPickerScrollHandler = null;
+  
+  const addFontPickerScrolling = () => {
+    if (fontPickerScrollHandler) return; // Already added
+    
+    fontPickerScrollHandler = (e) => {
+      const fontPickerRect = fontPicker.getBoundingClientRect();
+      const fontPickerListRect = fontPickerList.getBoundingClientRect();
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+      
+      // Check if mouse is within font picker area
+      const isInFontPicker = (
+        mouseX >= fontPickerRect.left && 
+        mouseX <= fontPickerRect.right && 
+        mouseY >= fontPickerRect.top && 
+        mouseY <= fontPickerRect.bottom
+      );
+      
+      const isInFontList = fontPickerList.classList.contains('open') && (
+        mouseX >= fontPickerListRect.left && 
+        mouseX <= fontPickerListRect.right && 
+        mouseY >= fontPickerListRect.top && 
+        mouseY <= fontPickerListRect.bottom
+      );
+      
+      if (isInFontList) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Scroll the font picker list
+        const delta = e.deltaY;
+        fontPickerList.scrollTop += delta * 0.5; // Smooth scrolling
+        
+        // Update highlighted item based on mouse position
+        updateFontPickerHighlight(mouseX, mouseY);
+      }
+    };
+    
+    document.addEventListener('wheel', fontPickerScrollHandler, { passive: false });
+  };
+  
+  const updateFontPickerHighlight = (mouseX, mouseY) => {
+    const listItems = fontPickerList.querySelectorAll('li');
+    
+    // Clear existing highlights
+    listItems.forEach(li => li.classList.remove('highlighted'));
+    
+    // Find item under mouse and highlight it
+    for (const li of listItems) {
+      const liRect = li.getBoundingClientRect();
+      if (mouseX >= liRect.left && mouseX <= liRect.right && 
+          mouseY >= liRect.top && mouseY <= liRect.bottom) {
+        li.classList.add('highlighted');
+        break;
+      }
+    }
+  };
+  
+  // Add mousemove handler for highlighting
+  document.addEventListener('mousemove', (e) => {
+    if (fontPickerList.classList.contains('open')) {
+      const fontPickerListRect = fontPickerList.getBoundingClientRect();
+      const isInFontList = (
+        e.clientX >= fontPickerListRect.left && 
+        e.clientX <= fontPickerListRect.right && 
+        e.clientY >= fontPickerListRect.top && 
+        e.clientY <= fontPickerListRect.bottom
+      );
+      
+      if (isInFontList) {
+        updateFontPickerHighlight(e.clientX, e.clientY);
+      }
+    }
+  });
+  
+  // Initialize scroll handling
+  addFontPickerScrolling();
   
   // Add mouse position detection for font picker area
   document.addEventListener('click', (e) => {
@@ -1187,6 +1410,17 @@ function init() {
   });
   const volumeRange = document.getElementById('volumeRange');
   volumeRange.addEventListener('input', (e) => setMasterVolumeDb(parseFloat(e.target.value)));
+  const elasticityRange = document.getElementById('elasticityRange');
+  elasticityRange.addEventListener('input', (e) => {
+    playbackTuning.playheadElasticity = parseFloat(e.target.value);
+    playbackTuning.letterElasticity = parseFloat(e.target.value) * 0.6; // Letters slightly less bouncy
+  });
+  const timingRange = document.getElementById('timingRange');
+  timingRange.addEventListener('input', (e) => {
+    const factor = parseFloat(e.target.value);
+    playbackTuning.minTimeBetweenNotes = 0.08 * factor;
+    playbackTuning.maxTimeBetweenNotes = 2.0 * factor;
+  });
   const playheadSelect = document.getElementById('playheadSelect');
   playheadSelect.addEventListener('change', (e) => setPlayheadStyle(e.target.value));
 
@@ -1204,8 +1438,22 @@ function init() {
   // Restore
   restoreFromStorage();
 
+  // Set default font to Pacifico (after restore to override stored settings)
+  if (state.events.length === 0) {
+    setFont('Pacifico');
+  }
+
+  // Show welcome text if no events exist
+  if (state.events.length === 0) {
+    showWelcomeText();
+  }
+  
+  // Initialize cursor position
+  const container = document.getElementById('textArea');
+  initializeCursor(container);
+
   // Default playhead style
-  setPlayheadStyle('classic');
+  setPlayheadStyle('kitten');
 
   // Controls collapse/expand
   const controls = document.getElementById('controls');
