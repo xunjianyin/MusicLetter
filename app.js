@@ -1202,7 +1202,9 @@ function snapLettersToTypesetGrid() {
 
 // Storage
 const STORAGE_KEY = 'music-letter-v1';
+const PERSIST_ENABLED = false; // Disable local persistence across refreshes
 function persistToStorage() {
+  if (!PERSIST_ENABLED) return;
   try {
     const data = {
       theme: state.theme,
@@ -1216,6 +1218,11 @@ function persistToStorage() {
 }
 
 function restoreFromStorage() {
+  if (!PERSIST_ENABLED) {
+    // Ensure no stale data remains when persistence is disabled
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    return;
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
@@ -1320,189 +1327,35 @@ function init() {
   themeSelect.addEventListener('change', (e) => setTheme(e.target.value));
   const patternSelect = document.getElementById('patternSelect');
   patternSelect.addEventListener('change', (e) => setPattern(e.target.value));
-  // Custom font picker
+  // Custom font picker (simplified: click-to-open, click-to-select, click-outside-to-close)
   const fontPickerBtn = document.getElementById('fontPickerBtn');
   const fontPickerList = document.getElementById('fontPickerList');
-  const fontPicker = document.getElementById('fontPicker');
-  const closeList = () => {
-    fontPickerList.classList.remove('open');
-    fontPickerBtn.setAttribute('aria-expanded', 'false');
-    // Clear any highlights when closing
-    const listItems = fontPickerList.querySelectorAll('li');
-    listItems.forEach(li => li.classList.remove('highlighted'));
-  };
-  fontPickerBtn.addEventListener('click', () => {
-    const open = fontPickerList.classList.toggle('open');
+
+  const setOpen = (open) => {
+    fontPickerList.classList.toggle('open', open);
     fontPickerBtn.setAttribute('aria-expanded', String(open));
-    if (open) fontPickerList.focus();
-  });
-  // Enhanced font picker click handling with mouse position detection
-  // Use capture phase to ensure we get the event first
-  fontPickerList.addEventListener('click', (e) => {
-    e.preventDefault();
+  };
+
+  fontPickerBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    setOpen(!fontPickerList.classList.contains('open'));
+    if (fontPickerList.classList.contains('open')) fontPickerList.focus();
+  });
+
+  fontPickerList.addEventListener('click', (e) => {
     const li = e.target.closest('li');
     if (!li) return;
     const font = li.getAttribute('data-font');
-    fontPickerBtn.textContent = font;
-    setFont(font);
-    closeList();
-  }, true); // Use capture phase
-  
-  // Also add mousedown handler as backup
-  fontPickerList.addEventListener('mousedown', (e) => {
-    e.preventDefault();
+    if (font) {
+      fontPickerBtn.textContent = font;
+      setFont(font);
+    }
+    setOpen(false);
     e.stopPropagation();
-  }, true);
-  
-  // Add direct event listeners to each font item as additional safeguard
-  const fontItems = fontPickerList.querySelectorAll('li');
-  fontItems.forEach(li => {
-    li.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const font = li.getAttribute('data-font');
-      if (font) {
-        fontPickerBtn.textContent = font;
-        setFont(font);
-        closeList();
-      }
-    }, true); // Use capture phase
-    
-    li.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    }, true);
   });
-  
-  // Add scroll handling for font picker
-  let fontPickerScrollHandler = null;
-  
-  const addFontPickerScrolling = () => {
-    if (fontPickerScrollHandler) return; // Already added
-    
-    fontPickerScrollHandler = (e) => {
-      const fontPickerRect = fontPicker.getBoundingClientRect();
-      const fontPickerListRect = fontPickerList.getBoundingClientRect();
-      const mouseX = e.clientX;
-      const mouseY = e.clientY;
-      
-      // Check if mouse is within font picker area
-      const isInFontPicker = (
-        mouseX >= fontPickerRect.left && 
-        mouseX <= fontPickerRect.right && 
-        mouseY >= fontPickerRect.top && 
-        mouseY <= fontPickerRect.bottom
-      );
-      
-      const isInFontList = fontPickerList.classList.contains('open') && (
-        mouseX >= fontPickerListRect.left && 
-        mouseX <= fontPickerListRect.right && 
-        mouseY >= fontPickerListRect.top && 
-        mouseY <= fontPickerListRect.bottom
-      );
-      
-      if (isInFontList) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Scroll the font picker list
-        const delta = e.deltaY;
-        fontPickerList.scrollTop += delta * 0.5; // Smooth scrolling
-        
-        // Update highlighted item based on mouse position
-        updateFontPickerHighlight(mouseX, mouseY);
-      }
-    };
-    
-    document.addEventListener('wheel', fontPickerScrollHandler, { passive: false });
-  };
-  
-  const updateFontPickerHighlight = (mouseX, mouseY) => {
-    const listItems = fontPickerList.querySelectorAll('li');
-    
-    // Clear existing highlights
-    listItems.forEach(li => li.classList.remove('highlighted'));
-    
-    // Find item under mouse and highlight it
-    for (const li of listItems) {
-      const liRect = li.getBoundingClientRect();
-      if (mouseX >= liRect.left && mouseX <= liRect.right && 
-          mouseY >= liRect.top && mouseY <= liRect.bottom) {
-        li.classList.add('highlighted');
-        break;
-      }
-    }
-  };
-  
-  // Add mousemove handler for highlighting
-  document.addEventListener('mousemove', (e) => {
-    if (fontPickerList.classList.contains('open')) {
-      const fontPickerListRect = fontPickerList.getBoundingClientRect();
-      const isInFontList = (
-        e.clientX >= fontPickerListRect.left && 
-        e.clientX <= fontPickerListRect.right && 
-        e.clientY >= fontPickerListRect.top && 
-        e.clientY <= fontPickerListRect.bottom
-      );
-      
-      if (isInFontList) {
-        updateFontPickerHighlight(e.clientX, e.clientY);
-      }
-    }
-  });
-  
-  // Initialize scroll handling
-  addFontPickerScrolling();
-  
-  // Add mouse position detection for font picker area
-  document.addEventListener('click', (e) => {
-    const fontPickerRect = fontPicker.getBoundingClientRect();
-    const fontPickerListRect = fontPickerList.getBoundingClientRect();
-    const mouseX = e.clientX;
-    const mouseY = e.clientY;
-    
-    // Check if click is within font picker button area
-    const isInButton = (
-      mouseX >= fontPickerRect.left && 
-      mouseX <= fontPickerRect.right && 
-      mouseY >= fontPickerRect.top && 
-      mouseY <= fontPickerRect.bottom
-    );
-    
-    // Check if click is within font picker list area (when open)
-    const isInList = fontPickerList.classList.contains('open') && (
-      mouseX >= fontPickerListRect.left && 
-      mouseX <= fontPickerListRect.right && 
-      mouseY >= fontPickerListRect.top && 
-      mouseY <= fontPickerListRect.bottom
-    );
-    
-    // If clicking within the font picker area, handle font selection
-    if (isInList) {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      // Find which li element was clicked
-      const listItems = fontPickerList.querySelectorAll('li');
-      for (const li of listItems) {
-        const liRect = li.getBoundingClientRect();
-        if (mouseX >= liRect.left && mouseX <= liRect.right && 
-            mouseY >= liRect.top && mouseY <= liRect.bottom) {
-          const font = li.getAttribute('data-font');
-          fontPickerBtn.textContent = font;
-          setFont(font);
-          closeList();
-          return;
-        }
-      }
-    }
-    
-    // Close list if clicking outside font picker
-    if (!isInButton && !isInList) {
-      closeList();
-    }
-  });
+
+  // Close when clicking anywhere outside
+  document.addEventListener('click', () => setOpen(false));
   const paletteSelect = document.getElementById('paletteSelect');
   paletteSelect.addEventListener('change', (e) => {
     state.keyToNote = buildKeyToNote(e.target.value);
