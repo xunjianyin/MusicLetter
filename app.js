@@ -624,8 +624,12 @@ function scheduleInactivityPlayback() {
     const eventsWithNotes = state.events.filter(e => e.note);
     console.log('Inactivity timeout triggered. Events with notes:', eventsWithNotes.length);
     if (eventsWithNotes.length > 0) {
-      console.log('Starting playback...');
-      playSequence().catch(err => console.error('Playback failed:', err));
+      if (!state.playback.isPlaying) {
+        console.log('Starting playback...');
+        playSequence().catch(err => console.error('Playback failed:', err));
+      } else {
+        console.log('Playback already running. Skipping auto-start.');
+      }
     }
   }, state.inactivityMs);
 }
@@ -824,6 +828,11 @@ function clearAll() {
     nextCaretPosition.x = 0;
     nextCaretPosition.y = 0;
   }
+  // reset character measurement measurer to avoid stale, detached node
+  if (measureChar.measurer) {
+    try { measureChar.measurer.remove(); } catch (_) {}
+    measureChar.measurer = null;
+  }
   // clear physics bodies
   clearLetterBodies();
   // Clear any remaining trail artifacts explicitly
@@ -834,6 +843,10 @@ function clearAll() {
   gsap.set(ball, { opacity: 0 });
   // Reset cursor position
   initializeCursor(container);
+  // Recompute layout state to ensure fresh positions for next input
+  try {
+    computeLineLayoutOffsets(container);
+  } catch (_) {}
   // Show welcome text again
   state.welcomeShown = true;
   showWelcomeText();
@@ -955,8 +968,8 @@ async function playSequence() {
     console.log('Playing note:', value.note, 'at time:', time);
     if (value.note) state.synth?.triggerAttackRelease(value.note, 0.22, time);
   }, rel.map((e, i) => [e.t, { note: e.note, index: i }]));
-  part.loop = true; // Enable looping
-  part.loopEnd = totalDur; // Set loop duration
+  // Single pass playback for inactivity trigger
+  part.loop = false;
   part.start(0);
   console.log('Tone.Part started with loop enabled, duration:', totalDur);
   state.playback.part = part;
@@ -1002,8 +1015,7 @@ async function playSequence() {
   // Build a piecewise timeline using quadratic bezier curves to simulate arcs
   const tl = gsap.timeline({ 
     defaults: { ease: 'power1.inOut' },
-    repeat: -1, // Infinite repeat
-    repeatDelay: 1.0 // 1 second pause between repeats
+    repeat: 0
   });
   state.playback.tl = tl;
   const local = (pt) => ({ x: pt.x, y: pt.y });
@@ -1045,14 +1057,6 @@ async function playSequence() {
       scale: `${0.8 + 0.4 * playbackTuning.playheadElasticity}`,
       rotation: `${Math.random() * 20 - 10}deg`,
       ease: `elastic.out(${playbackTuning.playheadElasticity}, 0.3)`,
-      onStart: () => {
-        // On landing at a (except first), play previous note
-        if (i === 0) playNoteAtIndex(0, '+0');
-      },
-      onComplete: () => {
-        // Play note at landing point b
-        playNoteAtIndex(i + 1, '+0');
-      },
       onUpdate: function() {
         // Trail effect that matches the playhead shape
         // Get the ball's actual screen position and convert to trail layer coordinates
@@ -1089,6 +1093,12 @@ async function playSequence() {
   Tone.Transport.position = 0;
   Tone.Transport.start('+0.1');
   console.log('Transport started, state:', Tone.Transport.state);
+
+  // When animation finishes, stop transport and mark not playing
+  tl.eventCallback('onComplete', () => {
+    try { Tone.Transport.stop(); Tone.Transport.position = 0; } catch (_) {}
+    state.playback.isPlaying = false;
+  });
 }
 
 // Physics integration with Matter.js
