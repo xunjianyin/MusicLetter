@@ -37,6 +37,12 @@ const state = {
     settleCounter: 0,
     snapped: false,
   },
+  // Playback state (so we can rebuild paths when layout changes)
+  playback: {
+    tl: null,
+    part: null,
+    isPlaying: false,
+  },
 };
 
 // Playback tuning to keep motion musical and pleasant
@@ -53,6 +59,8 @@ const playbackTuning = {
   // Elasticity settings
   letterElasticity: 0.5,      // letter bounce/restitution (0-1)
   playheadElasticity: 0.8,    // playhead bounce factor (0-2)
+  // Vertical offset so playhead/trail travels along the tops of letters
+  playheadYOffsetPx: -6,
 };
 
 const themes = {
@@ -190,6 +198,10 @@ function setFont(fontFamily) {
     updateCursorPosition(container);
   }
   persistToStorage();
+  // If playing, rebuild path to reflect new metrics
+  if (state.playback.isPlaying) {
+    playSequence();
+  }
 }
 
 function setAlign(align) {
@@ -202,6 +214,10 @@ function setAlign(align) {
   calculateCursorFromLetterPositions(container);
   updateCursorPosition(container);
   persistToStorage();
+  // If playing, rebuild path to reflect new alignment
+  if (state.playback.isPlaying) {
+    playSequence();
+  }
 }
 
 async function ensureAudio() {
@@ -806,9 +822,9 @@ function buildMotionPathFromEvents(containerRect) {
       const letter = letters[letterIndex];
       const letterRect = letter.getBoundingClientRect();
       // Convert to letter-sheet-relative coordinates
-      // Note: textArea has margins, so we need to account for that offset
+      // Place path along tops of letters (use small upward offset)
       const x = letterRect.left - letterSheetRect.left + letterRect.width / 2;
-      const y = letterRect.top - letterSheetRect.top + letterRect.height / 2;
+      const y = letterRect.top - letterSheetRect.top + playbackTuning.playheadYOffsetPx;
       console.log(`Letter ${letterIndex} (${event.char}): letterRect=`, letterRect, 'converted to:', x, y);
       points.push({ x, y });
       letterIndex++;
@@ -829,6 +845,13 @@ function stopPlayback() {
   
   // Clear trail
   if (trailLayer) trailLayer.innerHTML = '';
+  
+  // Kill timeline and part if active
+  try { state.playback.tl?.kill?.(); } catch (_) {}
+  try { state.playback.part?.dispose?.(); } catch (_) {}
+  state.playback.tl = null;
+  state.playback.part = null;
+  state.playback.isPlaying = false;
   
   // Stop audio transport
   if (Tone.Transport.state === 'started') {
@@ -897,6 +920,8 @@ async function playSequence() {
   part.loopEnd = totalDur; // Set loop duration
   part.start(0);
   console.log('Tone.Part started with loop enabled, duration:', totalDur);
+  state.playback.part = part;
+  state.playback.isPlaying = true;
 
   // Clean up any existing animations and trail, then show ball
   gsap.killTweensOf(ball);
@@ -941,6 +966,7 @@ async function playSequence() {
     repeat: -1, // Infinite repeat
     repeatDelay: 1.0 // 1 second pause between repeats
   });
+  state.playback.tl = tl;
   const local = (pt) => ({ x: pt.x, y: pt.y });
   const playNoteAtIndex = (idx, when) => {
     const e = rel[idx];
@@ -996,7 +1022,7 @@ async function playSequence() {
         
         // Calculate ball center in trail layer coordinate system
         const ballCenterX = ballRect.left + ballRect.width / 2 - trailRect.left;
-        const ballCenterY = ballRect.top + ballRect.height / 2 - trailRect.top;
+        const ballCenterY = ballRect.top - trailRect.top + playbackTuning.playheadYOffsetPx; // align to top of letters
         
         const dot = document.createElement('div');
         
