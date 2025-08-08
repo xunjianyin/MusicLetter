@@ -806,6 +806,7 @@ function buildMotionPathFromEvents(containerRect) {
       const letter = letters[letterIndex];
       const letterRect = letter.getBoundingClientRect();
       // Convert to letter-sheet-relative coordinates
+      // Note: textArea has margins, so we need to account for that offset
       const x = letterRect.left - letterSheetRect.left + letterRect.width / 2;
       const y = letterRect.top - letterSheetRect.top + letterRect.height / 2;
       console.log(`Letter ${letterIndex} (${event.char}): letterRect=`, letterRect, 'converted to:', x, y);
@@ -989,23 +990,27 @@ async function playSequence() {
       },
       onUpdate: function() {
         // Trail effect that matches the playhead shape
-        // Get the ball's current position in the letterSheet coordinate system
-        const ballX = gsap.getProperty(ball, "x");
-        const ballY = gsap.getProperty(ball, "y");
+        // Get the ball's actual screen position and convert to trail layer coordinates
+        const ballRect = ball.getBoundingClientRect();
+        const trailRect = trailLayer.getBoundingClientRect();
         
-        // The ball is positioned relative to letterSheet, and trailLayer has the same parent
-        // So we can use the ball's coordinates directly
+        // Calculate ball center in trail layer coordinate system
+        const ballCenterX = ballRect.left + ballRect.width / 2 - trailRect.left;
+        const ballCenterY = ballRect.top + ballRect.height / 2 - trailRect.top;
+        
         const dot = document.createElement('div');
         
         // Make trail dot match the playhead style
         dot.className = `trail-dot ${state.playhead?.className || ''}`.trim();
         
-        // Position the trail dot at the ball's position (both are relative to letterSheet)
-        dot.style.left = `${ballX - 6}px`; // Center the 12px dot
-        dot.style.top = `${ballY - 6}px`;
+        // Position the trail dot at the ball's center
+        dot.style.left = `${ballCenterX - 6}px`; // Center the 12px dot
+        dot.style.top = `${ballCenterY - 6}px`;
         dot.style.transform = `scale(${trailScale})`; // Full size trail dots
         
-        console.log('Ball position:', ballX, ballY, '| Trail dot at:', ballX - 6, ballY - 6);
+        console.log('Ball rect:', ballRect, '| Trail rect:', trailRect);
+        console.log('Ball center in trail coords:', ballCenterX, ballCenterY, '| Trail dot at:', ballCenterX - 6, ballCenterY - 6);
+        
         trailLayer.appendChild(dot);
         gsap.to(dot, { opacity: 0, scale: 0.3, duration: 0.6, ease: 'power1.out', onComplete: () => dot.remove() });
       },
@@ -1215,9 +1220,38 @@ function restoreFromStorage() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const data = JSON.parse(raw);
-    if (data.theme) setTheme(data.theme);
+    console.log('Restoring from storage:', data);
+    
+    // Set theme first but skip font setting if we have a custom font to restore
+    if (data.theme) {
+      console.log('Setting theme to:', data.theme);
+      state.theme = data.theme;
+      document.documentElement.setAttribute('data-theme', data.theme);
+      // Update notes palette per theme
+      state.keyToNote = buildKeyToNote(themes[data.theme]?.soundPalette || 'majorC');
+      // Sync UI selector if present
+      const paletteSelect = document.getElementById('paletteSelect');
+      if (paletteSelect) paletteSelect.value = themes[data.theme]?.soundPalette || 'majorC';
+      // Reconfigure synth if audio already started
+      try {
+        if (Tone.getContext().state === 'running' && state.synth) {
+          configureSynthForTheme(data.theme);
+        }
+      } catch (_) {}
+    }
+    
     if (data.pattern) setPattern(data.pattern);
-    if (data.font) setFont(String(data.font).replace(/['",]/g, '').trim());
+    
+    // Set font after theme to ensure it doesn't get overridden
+    if (data.font) {
+      console.log('Setting font to:', data.font);
+      setFont(String(data.font).replace(/['",]/g, '').trim());
+    } else if (data.theme) {
+      // Only set theme default font if no custom font was saved
+      const themeFont = themes[data.theme]?.fontFamily || 'Playfair Display';
+      console.log('Setting theme default font to:', themeFont);
+      setFont(themeFont);
+    }
     if (data.palette) {
       const ps = document.getElementById('paletteSelect');
       if (ps) ps.value = data.palette;
