@@ -184,6 +184,11 @@ function setFont(fontFamily) {
   // Optionally reflow existing letters to inherit font
   reflowExistingLetters();
   if (state.physics && state.physics.world) buildGroundBodies();
+  // Update cursor position for new font metrics
+  if (container) {
+    calculateCursorFromLetterPositions(container);
+    updateCursorPosition(container);
+  }
   persistToStorage();
 }
 
@@ -192,6 +197,10 @@ function setAlign(align) {
   document.documentElement.style.setProperty('--align', align);
   // Reflow to re-compute positions
   reflowExistingLetters();
+  // Update cursor position for new alignment
+  const container = document.getElementById('textArea');
+  calculateCursorFromLetterPositions(container);
+  updateCursorPosition(container);
   persistToStorage();
 }
 
@@ -329,6 +338,38 @@ function updateCursorPosition(container) {
   const y = nextCaretPosition.y || 0;
   container.style.setProperty('--cursor-x', `${x}px`);
   container.style.setProperty('--cursor-y', `${y}px`);
+}
+
+function calculateCursorFromLetterPositions(container) {
+  // Calculate cursor position based on actual letter positions (more accurate)
+  if (state.events.length === 0) {
+    nextCaretPosition.x = 0;
+    nextCaretPosition.y = 0;
+    return;
+  }
+  
+  // Get current aligned positions
+  const { positions } = layoutEventsAligned(container, state.events, state.align);
+  const nonNewlineEvents = state.events.filter(e => e.char !== '\n');
+  
+  if (positions.length > 0 && nonNewlineEvents.length > 0) {
+    const lastPos = positions[positions.length - 1];
+    const lastEvent = nonNewlineEvents[nonNewlineEvents.length - 1];
+    const style = getComputedStyle(container);
+    
+    // Get actual character width for precise cursor positioning
+    const charWidth = measureChar(container, lastEvent.char, style);
+    nextCaretPosition.x = lastPos.x + charWidth;
+    nextCaretPosition.y = lastPos.y;
+  } else {
+    // Handle case where last event was a newline
+    const layout = layoutEventsAligned(container, [...state.events, { char: 'M', note: null }], state.align);
+    const nextPos = layout.positions[layout.positions.length - 1];
+    if (nextPos) {
+      nextCaretPosition.x = nextPos.x;
+      nextCaretPosition.y = nextPos.y;
+    }
+  }
 }
 
 function initializeCursor(container) {
@@ -641,6 +682,8 @@ function handleKeyDown(ev) {
   state.lastKeyTs = Date.now();
   
   // Update cursor position to show where next character will appear
+  calculateCursorFromLetterPositions(container);
+  console.log('Updating cursor position to:', nextCaretPosition.x, nextCaretPosition.y);
   updateCursorPosition(container);
   
   scheduleInactivityPlayback();
@@ -666,8 +709,9 @@ function deleteLast() {
   persistToStorage();
   // Reflow the remaining letters to updated optimal positions
   reflowExistingLetters();
-  // Update cursor position
+  // Update cursor position after deletion
   const container = document.getElementById('textArea');
+  calculateCursorFromLetterPositions(container);
   updateCursorPosition(container);
 }
 
@@ -716,6 +760,7 @@ function clearWelcomeText() {
   
   // Update cursor position after clearing welcome text
   const container = document.getElementById('textArea');
+  calculateCursorFromLetterPositions(container);
   updateCursorPosition(container);
 }
 
@@ -741,21 +786,33 @@ function clearAll() {
 }
 
 function buildMotionPathFromEvents(containerRect) {
-  // Build path using stored event positions (more reliable than DOM elements)
+  // Build path using actual DOM letter positions (more accurate for current layout)
   const container = document.getElementById('textArea');
   const letterSheet = document.getElementById('letterSheet');
   const letterSheetRect = letterSheet.getBoundingClientRect();
   const containerRect2 = container.getBoundingClientRect();
   
-  // Get points from events that have notes (visible letters)
-  const points = state.events
-    .filter(e => e.note && e.char !== '\n') // Only events with notes and not newlines
-    .map(event => {
-      // Convert stored positions to letter-sheet-relative coordinates
-      const x = event.x + (containerRect2.left - letterSheetRect.left) + 32; // Add margin offset
-      const y = event.y + (containerRect2.top - letterSheetRect.top) + 40; // Add margin offset
-      return { x, y };
-    });
+  console.log('buildMotionPathFromEvents - letterSheet rect:', letterSheetRect);
+  console.log('buildMotionPathFromEvents - container rect:', containerRect2);
+  
+  // Get points from actual DOM letter positions
+  const letters = Array.from(container.querySelectorAll('.typed-letter'));
+  const eventsWithNotes = state.events.filter(e => e.note && e.char !== '\n');
+  const points = [];
+  
+  let letterIndex = 0;
+  for (const event of eventsWithNotes) {
+    if (letterIndex < letters.length) {
+      const letter = letters[letterIndex];
+      const letterRect = letter.getBoundingClientRect();
+      // Convert to letter-sheet-relative coordinates
+      const x = letterRect.left - letterSheetRect.left + letterRect.width / 2;
+      const y = letterRect.top - letterSheetRect.top + letterRect.height / 2;
+      console.log(`Letter ${letterIndex} (${event.char}): letterRect=`, letterRect, 'converted to:', x, y);
+      points.push({ x, y });
+      letterIndex++;
+    }
+  }
   
   if (points.length === 0) return null;
   return points;
@@ -826,26 +883,30 @@ async function playSequence() {
     }
   }
 
+  // Compute total duration slightly beyond last event
+  const totalDur = (rel[rel.length - 1].t || 0) + 0.35;
+
   // Create a Tone.Part to schedule in order (will be triggered by onUpdate sync)
   console.log('Creating Tone.Part with', rel.length, 'note events');
   const part = new Tone.Part((time, value) => {
     console.log('Playing note:', value.note, 'at time:', time);
     if (value.note) state.synth?.triggerAttackRelease(value.note, 0.22, time);
   }, rel.map((e, i) => [e.t, { note: e.note, index: i }]));
+  part.loop = true; // Enable looping
+  part.loopEnd = totalDur; // Set loop duration
   part.start(0);
-  console.log('Tone.Part started');
-
-  // Compute total duration slightly beyond last event
-  const totalDur = (rel[rel.length - 1].t || 0) + 0.35;
+  console.log('Tone.Part started with loop enabled, duration:', totalDur);
 
   // Clean up any existing animations and trail, then show ball
   gsap.killTweensOf(ball);
   trailLayer.innerHTML = ''; // Clear trail first
   
-  // Position ball at the first letter but keep it invisible (only trail will show)
+  // Position ball at the first letter but keep it mostly invisible (only trail will show)
   const firstPoint = points[0];
+  console.log('Setting ball position to:', firstPoint.x, firstPoint.y);
+  console.log('Points for motion path:', points);
   gsap.set(ball, { 
-    opacity: 0, // Hide the main ball - only trail will be visible
+    opacity: 0.3, // Make more visible for debugging
     x: firstPoint.x, 
     y: firstPoint.y, 
     scale: 1,
@@ -874,7 +935,11 @@ async function playSequence() {
   }
 
   // Build a piecewise timeline using quadratic bezier curves to simulate arcs
-  const tl = gsap.timeline({ defaults: { ease: 'power1.inOut' } });
+  const tl = gsap.timeline({ 
+    defaults: { ease: 'power1.inOut' },
+    repeat: -1, // Infinite repeat
+    repeatDelay: 1.0 // 1 second pause between repeats
+  });
   const local = (pt) => ({ x: pt.x, y: pt.y });
   const playNoteAtIndex = (idx, when) => {
     const e = rel[idx];
@@ -922,21 +987,25 @@ async function playSequence() {
         // Play note at landing point b
         playNoteAtIndex(i + 1, '+0');
       },
-      onUpdate: () => {
+      onUpdate: function() {
         // Trail effect that matches the playhead shape
-        const r = ball.getBoundingClientRect();
+        // Get the ball's current position in the letterSheet coordinate system
+        const ballX = gsap.getProperty(ball, "x");
+        const ballY = gsap.getProperty(ball, "y");
+        
+        // The ball is positioned relative to letterSheet, and trailLayer has the same parent
+        // So we can use the ball's coordinates directly
         const dot = document.createElement('div');
         
         // Make trail dot match the playhead style
         dot.className = `trail-dot ${state.playhead?.className || ''}`.trim();
         
-        // Position the trail dot at the center of the ball
-        const ballCenterX = r.left - rect.left + r.width / 2;
-        const ballCenterY = r.top - rect.top + r.height / 2;
-        dot.style.left = `${ballCenterX - 6}px`; // Center the 12px dot
-        dot.style.top = `${ballCenterY - 6}px`;
+        // Position the trail dot at the ball's position (both are relative to letterSheet)
+        dot.style.left = `${ballX - 6}px`; // Center the 12px dot
+        dot.style.top = `${ballY - 6}px`;
         dot.style.transform = `scale(${trailScale})`; // Full size trail dots
         
+        console.log('Ball position:', ballX, ballY, '| Trail dot at:', ballX - 6, ballY - 6);
         trailLayer.appendChild(dot);
         gsap.to(dot, { opacity: 0, scale: 0.3, duration: 0.6, ease: 'power1.out', onComplete: () => dot.remove() });
       },
@@ -946,7 +1015,9 @@ async function playSequence() {
   
   // Start transport immediately to ensure Part can schedule properly
   console.log('Starting Tone.Transport...');
-  Tone.Transport.start('+0.05');
+  Tone.Transport.stop(); // Ensure clean state
+  Tone.Transport.position = 0;
+  Tone.Transport.start('+0.1');
   console.log('Transport started, state:', Tone.Transport.state);
 }
 
@@ -1092,6 +1163,7 @@ function reflowExistingLetters() {
   }
   
   // Update cursor position after reflow
+  calculateCursorFromLetterPositions(container);
   updateCursorPosition(container);
 }
 
@@ -1433,7 +1505,11 @@ function init() {
   // Physics
   initPhysics();
   // Rebuild grounds on resize as layout changes
-  window.addEventListener('resize', () => buildGroundBodies());
+  window.addEventListener('resize', () => {
+    buildGroundBodies();
+    // Also reflow letters to handle container size changes
+    reflowExistingLetters();
+  });
 
   // Restore
   restoreFromStorage();
@@ -1549,13 +1625,17 @@ function handleImportJson(ev) {
 
 async function exportAsWav() {
   // Render scheduled notes in an OfflineContext to a WAV Blob
+  console.log('exportAsWav called, events:', state.events.length);
   try {
-    if (!state.events.length) return;
+    if (!state.events.length) {
+      console.log('No events to export');
+      return;
+    }
     const relStart = state.events[0].time;
     const rel = state.events.map(e => ({ t: Math.max(0, e.time - relStart), note: e.note })).filter(e => e.note);
     const totalDur = (rel.length ? rel[rel.length - 1].t : 0) + 0.8;
 
-    const sampleRate = 44100;
+    // Set up offline rendering context
     const offline = new Tone.Offline(({ transport }) => {
       const reverb = new Tone.Reverb({ decay: 1.6, wet: 0.2 }).toDestination();
       const delay = new Tone.FeedbackDelay({ delayTime: 0.15, feedback: 0.15, wet: 0.12 }).connect(reverb);
@@ -1566,9 +1646,11 @@ async function exportAsWav() {
       const part = new Tone.Part((time, v) => synth.triggerAttackRelease(v.note, 0.22, time), rel.map(r => [r.t, { note: r.note }]));
       part.start(0);
       transport.start();
-    }, totalDur, sampleRate);
+    }, totalDur);
 
+    console.log('Rendering audio offline...');
     const buffer = await offline;
+    console.log('Audio rendered, converting to WAV...');
     const wav = toneAudioBufferToWav(buffer);
     const blob = new Blob([wav], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
@@ -1579,8 +1661,9 @@ async function exportAsWav() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    console.log('WAV export completed');
   } catch (e) {
-    // ignore
+    console.error('WAV export failed:', e);
   }
 }
 
