@@ -180,11 +180,40 @@ body {
 .controls .left-controls { grid-column: 1; }
 .controls .right-controls { grid-column: 1; }
 @media (min-width: 900px) {
-  .controls .controls-content { grid-template-columns: repeat(2, minmax(340px, 1fr)); }
-  .controls .left-controls { grid-column: 1; }
-  .controls .right-controls { grid-column: 2; justify-content: flex-end; }
+  /* Give right side (sliders/exports) more space than left (selectors) */
+  .controls .controls-content { grid-template-columns: minmax(340px, 0.9fr) minmax(520px, 1.1fr); }
+  .controls .left-controls { grid-column: 1; justify-content: flex-start; }
+  .controls .right-controls { grid-column: 2; justify-content: space-between; }
 }
 .control-label { margin-left: 8px; line-height: 36px; }
+
+/* Keep label + control on the same row in the left panel */
+.left-controls {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr);
+  column-gap: 12px;
+  row-gap: 12px;
+  align-items: center;
+}
+
+@media (max-width: 520px) {
+  .left-controls { grid-template-columns: auto minmax(180px, 1fr); }
+}
+
+/* Keep label + control on the same row in the right panel */
+.right-controls {
+  display: grid;
+  grid-template-columns: auto minmax(320px, 1fr);
+  column-gap: 12px;
+  row-gap: 12px;
+  align-items: center;
+}
+
+.right-controls label { justify-self: end; }
+.right-controls #soundSelect,
+.right-controls #volumeRange,
+.right-controls #elasticityRange,
+.right-controls #timingRange { grid-column: 2; width: 100%; }
 
 select, button {
   font-family: var(--font-sans);
