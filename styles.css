@@ -223,9 +223,14 @@ body {
 .controls-toggle {
   border: none;
   background: transparent;
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
-  padding: 6px 8px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  height: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .controls.collapsed .controls-content { 
   display: none; 
@@ -282,18 +287,37 @@ body {
 
 /* Keep label + control on the same row in the right panel */
 .right-controls {
-  display: grid;
-  grid-template-columns: auto minmax(320px, 1fr);
-  column-gap: 12px;
-  row-gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
   align-items: center;
+  justify-content: flex-start;
 }
 
-.right-controls label { justify-self: end; }
-.right-controls #soundSelect,
-.right-controls #volumeRange,
-.right-controls #elasticityRange,
-.right-controls #timingRange { grid-column: 2; width: 100%; }
+/* Specific sizing for form controls vs buttons */
+.right-controls select,
+.right-controls input[type="range"] {
+  min-width: 120px;
+  flex: 1;
+  max-width: 200px;
+}
+
+/* Action buttons should be compact */
+.right-controls button {
+  min-width: auto;
+  width: auto;
+  padding: 0 var(--spacing-md);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Labels in right controls */
+.right-controls label {
+  margin-right: var(--spacing-xs);
+  margin-left: var(--spacing-sm);
+  font-size: 13px;
+  white-space: nowrap;
+}
 
 /* ============================================================================
    FORM CONTROLS - CONSISTENT & ACCESSIBLE
@@ -304,17 +328,21 @@ button {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
   padding: 0 var(--spacing-md);
   background: var(--paper);
   color: var(--ink);
-  height: 36px;
+  height: 32px; /* Reduced from 36px for more compact buttons */
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   transition: all var(--transition-fast);
   outline: none;
   position: relative;
+  box-sizing: border-box;
+  text-align: center;
 }
 
 select:focus,
@@ -788,9 +816,9 @@ button:disabled {
   
   /* Larger touch targets */
   button, select {
-    min-height: 44px;
-    height: 44px;
-    font-size: 16px; /* Prevent zoom on iOS */
+    min-height: 40px;
+    height: 40px;
+    font-size: 15px; /* Prevent zoom on iOS while keeping reasonable size */
   }
   
   .controls-toggle {
