@@ -696,6 +696,36 @@ function scheduleInactivityPlayback() {
 // INPUT HANDLING - OPTIMIZED FOR PERFORMANCE
 // ============================================================================
 
+function handleMobileInput(ev) {
+  try {
+    const input = ev.target;
+    const newValue = input.value;
+    
+    // Process each new character
+    if (newValue.length > 0) {
+      // Get the last character entered
+      const lastChar = newValue[newValue.length - 1];
+      
+      // Create a synthetic keydown event
+      const syntheticEvent = {
+        key: lastChar,
+        preventDefault: () => {},
+        target: input
+      };
+      
+      // Process the character
+      handleKeyDown(syntheticEvent);
+      
+      // Clear the input to prepare for next character
+      setTimeout(() => {
+        input.value = '';
+      }, 50);
+    }
+  } catch (error) {
+    console.error('Error handling mobile input:', error);
+  }
+}
+
 function handleKeyDown(ev) {
   try {
     // Clear welcome text on first interaction
@@ -1506,33 +1536,81 @@ function init() {
     }
   
   const sheet = document.getElementById('letterSheet');
-  sheet.addEventListener('keydown', handleKeyDown);
-  sheet.addEventListener('pointerdown', (e) => {
-    // Don't focus if the click is within the font picker area
-    const fontPicker = document.getElementById('fontPicker');
-    const fontPickerRect = fontPicker.getBoundingClientRect();
-    const isInFontPicker = (
-      e.clientX >= fontPickerRect.left && 
-      e.clientX <= fontPickerRect.right && 
-      e.clientY >= fontPickerRect.top && 
-      e.clientY <= fontPickerRect.bottom
-    );
+  const mobileInput = document.getElementById('mobileInput');
+  
+  // Detect if we're on a mobile device
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                   ('ontouchstart' in window) || 
+                   (navigator.maxTouchPoints > 0);
+  
+  console.log('Mobile device detected:', isMobile);
+  
+  // Set up keyboard event handling
+  if (isMobile && mobileInput) {
+    // Mobile: Use hidden input for keyboard events
+    mobileInput.addEventListener('input', handleMobileInput);
+    mobileInput.addEventListener('keydown', handleKeyDown);
     
-    if (!isInFontPicker) {
-      // Clear welcome text on first click
+    // Focus mobile input when sheet is tapped
+    sheet.addEventListener('touchstart', (e) => {
+      e.preventDefault();
       if (state.welcomeShown) {
         clearWelcomeText();
       }
-      sheet.focus();
-      // Completely remove all focus indicators immediately after focusing
-      sheet.style.outline = 'none';
-      sheet.style.boxShadow = 'none';
-      sheet.style.border = 'none';
-      sheet.blur(); // Remove focus immediately
-      sheet.focus(); // Re-focus for keyboard input without visual indicator
-    }
-  });
-  sheet.focus();
+      // Focus the hidden input to trigger mobile keyboard
+      mobileInput.focus();
+      console.log('Mobile input focused');
+    });
+    
+    sheet.addEventListener('pointerdown', (e) => {
+      // Don't focus if the click is within the font picker area
+      const fontPicker = document.getElementById('fontPicker');
+      const fontPickerRect = fontPicker.getBoundingClientRect();
+      const isInFontPicker = (
+        e.clientX >= fontPickerRect.left && 
+        e.clientX <= fontPickerRect.right && 
+        e.clientY >= fontPickerRect.top && 
+        e.clientY <= fontPickerRect.bottom
+      );
+      
+      if (!isInFontPicker) {
+        if (state.welcomeShown) {
+          clearWelcomeText();
+        }
+        mobileInput.focus();
+        console.log('Mobile input focused via pointer');
+      }
+    });
+  } else {
+    // Desktop: Use sheet directly for keyboard events
+    sheet.addEventListener('keydown', handleKeyDown);
+    sheet.addEventListener('pointerdown', (e) => {
+      // Don't focus if the click is within the font picker area
+      const fontPicker = document.getElementById('fontPicker');
+      const fontPickerRect = fontPicker.getBoundingClientRect();
+      const isInFontPicker = (
+        e.clientX >= fontPickerRect.left && 
+        e.clientX <= fontPickerRect.right && 
+        e.clientY >= fontPickerRect.top && 
+        e.clientY <= fontPickerRect.bottom
+      );
+      
+      if (!isInFontPicker) {
+        // Clear welcome text on first click
+        if (state.welcomeShown) {
+          clearWelcomeText();
+        }
+        sheet.focus();
+        // Completely remove all focus indicators immediately after focusing
+        sheet.style.outline = 'none';
+        sheet.style.boxShadow = 'none';
+        sheet.style.border = 'none';
+        sheet.blur(); // Remove focus immediately
+        sheet.focus(); // Re-focus for keyboard input without visual indicator
+      }
+    });
+    sheet.focus();
+  }
 
     // Add error handling to event listeners
     const playBtn = document.getElementById('playBtn');
@@ -1743,11 +1821,30 @@ function setPlayheadStyle(style) {
 }
 
 function exportAsJson() {
+  const alignSelect = document.getElementById('alignSelect');
+  const playheadSelect = document.getElementById('playheadSelect');
+  const soundSelect = document.getElementById('soundSelect');
+  const volumeRange = document.getElementById('volumeRange');
+  const elasticityRange = document.getElementById('elasticityRange');
+  const timingRange = document.getElementById('timingRange');
+  const paletteSelect = document.getElementById('paletteSelect');
+
   const data = {
     theme: state.theme,
-    font: getComputedStyle(document.documentElement).getPropertyValue('--font-serif').replace(/['",]/g, '').trim(),
-    palette: document.getElementById('paletteSelect')?.value || 'majorC',
+    pattern: state.pattern,
+    align: state.align,
+    font: getComputedStyle(document.documentElement)
+      .getPropertyValue('--font-serif')
+      .replace(/['",]/g, '')
+      .trim(),
+    palette: paletteSelect?.value || 'majorC',
+    playheadStyle: playheadSelect?.value || 'classic',
+    soundPreset: soundSelect?.value || 'sine_soft',
+    volumeDb: typeof volumeRange?.value === 'string' ? parseFloat(volumeRange.value) : -12,
+    elasticity: typeof elasticityRange?.value === 'string' ? parseFloat(elasticityRange.value) : playbackTuning.playheadElasticity,
+    timingFactor: typeof timingRange?.value === 'string' ? parseFloat(timingRange.value) : 1.0,
     events: state.events,
+    version: '2.0',
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1769,10 +1866,47 @@ function handleImportJson(ev) {
       const data = JSON.parse(String(reader.result));
       clearAll();
       if (data.theme) setTheme(data.theme);
+      if (data.pattern) setPattern(data.pattern);
       if (data.font) setFont(String(data.font));
+      if (data.align) {
+        const alignSelect = document.getElementById('alignSelect');
+        if (alignSelect) alignSelect.value = data.align;
+        setAlign(data.align);
+      }
       if (data.palette) {
-        document.getElementById('paletteSelect').value = data.palette;
+        const ps = document.getElementById('paletteSelect');
+        if (ps) ps.value = data.palette;
         state.keyToNote = buildKeyToNote(data.palette);
+      }
+      if (data.playheadStyle) {
+        const playheadSelect = document.getElementById('playheadSelect');
+        if (playheadSelect) playheadSelect.value = data.playheadStyle;
+        setPlayheadStyle(data.playheadStyle);
+      }
+      if (data.soundPreset) {
+        const soundSelect = document.getElementById('soundSelect');
+        if (soundSelect) soundSelect.value = data.soundPreset;
+        try {
+          ensureAudio().then(() => setSoundPreset(data.soundPreset));
+        } catch (_) {}
+      }
+      if (typeof data.volumeDb === 'number') {
+        const volumeRange = document.getElementById('volumeRange');
+        if (volumeRange) volumeRange.value = String(data.volumeDb);
+        setMasterVolumeDb(data.volumeDb);
+      }
+      if (typeof data.elasticity === 'number') {
+        const elasticityRange = document.getElementById('elasticityRange');
+        if (elasticityRange) elasticityRange.value = String(data.elasticity);
+        playbackTuning.playheadElasticity = data.elasticity;
+        playbackTuning.letterElasticity = data.elasticity * 0.6;
+      }
+      if (typeof data.timingFactor === 'number') {
+        const timingRange = document.getElementById('timingRange');
+        if (timingRange) timingRange.value = String(data.timingFactor);
+        const factor = data.timingFactor;
+        playbackTuning.minTimeBetweenNotes = 0.08 * factor;
+        playbackTuning.maxTimeBetweenNotes = 2.0 * factor;
       }
       const container = document.getElementById('textArea');
       if (nextCaretPosition.measurer) {
@@ -1787,6 +1921,8 @@ function handleImportJson(ev) {
         if (e.char !== '\n') createLetterSpan(e.char, container, pos.x, pos.y);
         recordEvent(e.char, e.note, pos);
       }
+      // Reflow to ensure imported alignment and metrics are applied
+      try { reflowExistingLetters(); } catch (_) {}
       persistToStorage();
     } catch (_) {}
     ev.target.value = '';

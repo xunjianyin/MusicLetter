@@ -18,14 +18,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Playfair+Display:wght@400;600&family=EB+Garamond:wght@400;600&family=Merriweather:wght@400;700&family=Lora:wght@400;600&family=Cormorant+Garamond:wght@400;600&family=DM+Serif+Display&family=Libre+Baskerville:wght@400;700&family=Great+Vibes&family=Pacifico&family=Dancing+Script:wght@400;600&family=Cinzel+Decorative:wght@400;700&family=Playball&family=Lobster&family=Sacramento&family=Amatic+SC:wght@400;700&family=Caveat:wght@400;600&family=Abril+Fatface&family=Berkshire+Swash&family=Shadows+Into+Light&family=Indie+Flower&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/browser-id3-writer@4.1.0/dist/browser-id3-writer.min.js" defer></script>
-    <script src="./app.js?v=11" defer></script>
+    <script src="./app.js?v=12" defer></script>
   </head>
   <body>
     <a href="#letterSheet" class="skip-link">Skip to main content</a>
@@ -157,6 +157,18 @@
 
     <main class="stage" role="main">
       <section id="letterSheet" class="letter-sheet" aria-label="Interactive typing area" tabindex="0" role="textbox" aria-multiline="true" aria-describedby="instructions">
+        <!-- Hidden input for mobile keyboard support -->
+        <input 
+          id="mobileInput" 
+          class="mobile-input" 
+          type="text" 
+          autocomplete="off" 
+          autocorrect="off" 
+          autocapitalize="off" 
+          spellcheck="false"
+          aria-hidden="true"
+          tabindex="-1"
+        />
         <div id="textArea" class="text-area" aria-live="polite" aria-atomic="false"></div>
         <div id="instructions" class="sr-only">
           Start typing to create animated letters with musical notes. Use backspace to delete, enter for new lines. 

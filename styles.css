@@ -468,6 +468,23 @@ button:disabled {
   border-color: inherit !important;
 }
 
+/* Mobile input for keyboard support */
+.mobile-input {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  /* Prevent mobile browsers from showing input */
+  border: none;
+  background: transparent;
+  color: transparent;
+  font-size: 16px; /* Prevent zoom on iOS */
+}
+
 /* ============================================================================
    TEXT AREA - OPTIMIZED FOR TYPOGRAPHY
    ============================================================================ */
