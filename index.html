@@ -8,7 +8,6 @@
     <meta name="author" content="Music Letter" />
     <meta name="theme-color" content="#7a5cff" />
     
-    <!-- Performance optimizations -->
     <meta name="preload" content="fonts" />
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
     <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
@@ -24,13 +23,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js" defer></script>
-    <!-- MP3 encoding and ID3 tagging -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/browser-id3-writer@4.1.0/dist/browser-id3-writer.min.js" defer></script>
     <script src="./app.js?v=11" defer></script>
   </head>
   <body>
-    <!-- Skip to main content for screen readers -->
     <a href="#letterSheet" class="skip-link">Skip to main content</a>
     <div class="controls collapsed" id="controls" role="toolbar" aria-label="Application controls and settings">
       <button id="controlsToggle" class="controls-toggle" aria-label="Toggle controls panel" aria-expanded="false" title="Show/hide controls">
@@ -108,34 +105,52 @@
         </select>
       </div>
       <div class="right-controls">
-        <button id="playBtn" aria-label="Play sequence" title="Play the typed sequence with animation">
-         Play
-        </button>
-        <button id="clearBtn" aria-label="Clear all text" title="Clear all typed content">
-         Clear
-        </button>
-        <label for="soundSelect" class="control-label">Sound</label>
-        <select id="soundSelect" aria-label="Sound preset">
-          <option value="sine_soft">Sine Soft</option>
-          <option value="triangle_ambient">Triangle Ambient</option>
-          <option value="chime_fm">Chime FM</option>
-          <option value="pluck">Pluck</option>
-          <option value="saw_pad">Saw Pad</option>
-          <option value="epiano">E-Piano</option>
-          <option value="bell">Bell</option>
-        </select>
-        <label for="volumeRange" class="control-label">Vol</label>
-        <input id="volumeRange" type="range" min="-36" max="0" step="1" value="-12" aria-label="Master volume (dB)" />
-        <label for="elasticityRange" class="control-label">Bounce</label>
-        <input id="elasticityRange" type="range" min="0" max="1" step="0.1" value="0.8" aria-label="Playhead elasticity" />
-        <label for="timingRange" class="control-label">Tempo</label>
-        <input id="timingRange" type="range" min="0.5" max="3.0" step="0.1" value="1.0" aria-label="Playback timing" />
-        <button id="exportJsonBtn" aria-label="Export JSON">Export JSON</button>
-        <button id="exportWavBtn" aria-label="Export WAV">Export WAV</button>
-        <button id="exportMp3Btn" aria-label="Export MP3">Export MP3</button>
-        <button id="exportLrcBtn" aria-label="Export LRC">Export LRC</button>
-        <button id="importBtn" aria-label="Import JSON">Import</button>
-        <input id="importFile" type="file" accept="application/json" style="display:none" />
+        <div class="control-row">
+            <button id="playBtn" aria-label="Play sequence" title="Play the typed sequence with animation">
+                Play
+            </button>
+            <button id="clearBtn" aria-label="Clear all text" title="Clear all typed content">
+                Clear
+            </button>
+        </div>
+        <div class="control-row">
+            <label for="soundSelect" class="control-label">Sound</label>
+            <select id="soundSelect" aria-label="Sound preset">
+                <option value="sine_soft">Sine Soft</option>
+                <option value="triangle_ambient">Triangle Ambient</option>
+                <option value="chime_fm">Chime FM</option>
+                <option value="pluck">Pluck</option>
+                <option value="saw_pad">Saw Pad</option>
+                <option value="epiano">E-Piano</option>
+                <option value="bell">Bell</option>
+            </select>
+        </div>
+        <div class="control-row-sliders">
+            <div>
+                <label for="volumeRange" class="control-label">Vol</label>
+                <input id="volumeRange" type="range" min="-36" max="0" step="1" value="-12" aria-label="Master volume (dB)" />
+            </div>
+            <div>
+                <label for="elasticityRange" class="control-label">Bounce</label>
+                <input id="elasticityRange" type="range" min="0" max="1" step="0.1" value="0.8" aria-label="Playhead elasticity" />
+            </div>
+            <div>
+                <label for="timingRange" class="control-label">Tempo</label>
+                <input id="timingRange" type="range" min="0.5" max="3.0" step="0.1" value="1.0" aria-label="Playback timing" />
+            </div>
+        </div>
+        <div class="control-row-file-ops">
+            <div>
+                <button id="exportJsonBtn" aria-label="Export JSON">Export JSON</button>
+                <button id="exportWavBtn" aria-label="Export WAV">Export WAV</button>
+                <button id="exportMp3Btn" aria-label="Export MP3">Export MP3</button>
+            </div>
+            <div>
+                <button id="exportLrcBtn" aria-label="Export LRC">Export LRC</button>
+                <button id="importBtn" aria-label="Import JSON">Import</button>
+                <input id="importFile" type="file" accept="application/json" style="display:none" />
+            </div>
+        </div>
       </div>
       </div>
     </div>
@@ -151,19 +166,15 @@
         <div id="ball" class="ball" aria-hidden="true"></div>
       </section>
     </main>
-      
-    <!-- Loading indicator -->
+    
     <div id="loadingIndicator" class="loading-indicator" aria-hidden="true">
       <div class="loading-spinner"></div>
       <p>Loading Music Letter...</p>
     </div>
     
-    <!-- Error notification -->
     <div id="errorNotification" class="error-notification" role="alert" aria-live="assertive" aria-atomic="true" style="display: none;">
       <p id="errorMessage"></p>
       <button id="dismissError" aria-label="Dismiss error">×</button>
     </div>
   </body>
 </html>
-
-

@@ -253,7 +253,7 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: var(--spacing-sm) var(--spacing-md);
-  align-items: center;
+  align-items: stretch;
   animation: fadeIn 0.3s ease-out;
 }
 
@@ -315,10 +315,22 @@ body {
 .right-controls label {
   margin-right: var(--spacing-xs);
   margin-left: var(--spacing-sm);
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
 }
+.control-row-file-ops {
+  display: flex;
+  flex-direction: column; /* Stack the button rows vertically */
+  gap: var(--spacing-sm); /* Space between the two rows */
+  flex-basis: 100%;       /* Ensure it takes a full line in the parent flex container */
+}
 
+/* A single row of buttons inside the file-ops container */
+.control-row-file-ops > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
 /* ============================================================================
    FORM CONTROLS - CONSISTENT & ACCESSIBLE
    ============================================================================ */
