@@ -61,6 +61,11 @@ const playbackTuning = {
   playheadElasticity: 0.8,    // playhead bounce factor (0-2)
   // Vertical offset so playhead/trail travels along the tops of letters
   playheadYOffsetPx: -6,
+  // Horizontal anchor within each glyph box (0 = left edge, 0.5 = center)
+  playheadXAnchor: -1,
+  // Groove/tempo
+  tempoBpm: 96,              // transport tempo used to quantize bounces
+  gridSubdivision: 2,        // 1 = quarter, 2 = eighth, 4 = sixteenth
 };
 
 const themes = {
@@ -854,35 +859,38 @@ function clearAll() {
 }
 
 function buildMotionPathFromEvents(containerRect) {
-  // Build path using actual DOM letter positions (more accurate for current layout)
+  // Build path using layout-computed positions so indices match events exactly
   const container = document.getElementById('textArea');
   const letterSheet = document.getElementById('letterSheet');
   const letterSheetRect = letterSheet.getBoundingClientRect();
   const containerRect2 = container.getBoundingClientRect();
-  
-  console.log('buildMotionPathFromEvents - letterSheet rect:', letterSheetRect);
-  console.log('buildMotionPathFromEvents - container rect:', containerRect2);
-  
-  // Get points from actual DOM letter positions
-  const letters = Array.from(container.querySelectorAll('.typed-letter'));
-  const eventsWithNotes = state.events.filter(e => e.note && e.char !== '\n');
+
+  const style = getComputedStyle(container);
+  const layout = layoutEventsAligned(container, state.events, state.align);
+  const positions = layout.positions; // one entry per non-newline glyph in order
+
   const points = [];
-  
-  let letterIndex = 0;
-  for (const event of eventsWithNotes) {
-    if (letterIndex < letters.length) {
-      const letter = letters[letterIndex];
-      const letterRect = letter.getBoundingClientRect();
-      // Convert to letter-sheet-relative coordinates
-      // Place path along tops of letters (use small upward offset)
-      const x = letterRect.left - letterSheetRect.left + letterRect.width / 2;
-      const y = letterRect.top - letterSheetRect.top + playbackTuning.playheadYOffsetPx;
-      console.log(`Letter ${letterIndex} (${event.char}): letterRect=`, letterRect, 'converted to:', x, y);
-      points.push({ x, y });
-      letterIndex++;
+  let glyphIndex = 0;
+  for (let i = 0; i < state.events.length; i += 1) {
+    const ev = state.events[i];
+    if (ev.char === '\n') {
+      continue; // no glyph/position for newline
     }
+    // Position in typeset layout for this glyph
+    const pos = positions[glyphIndex];
+    if (!pos) break;
+
+    if (ev.note) {
+      // Measure glyph width for robust horizontal anchoring
+      const w = measureChar(container, ev.char, style);
+      const anchor = Math.max(-0.5, Math.min(1.0, Number(playbackTuning.playheadXAnchor) || 0.5));
+      const x = (containerRect2.left - letterSheetRect.left) + pos.x + w * anchor;
+      const y = (containerRect2.top - letterSheetRect.top) + pos.y + playbackTuning.playheadYOffsetPx;
+      points.push({ x, y });
+    }
+    glyphIndex += 1;
   }
-  
+
   if (points.length === 0) return null;
   return points;
 }
@@ -959,6 +967,18 @@ async function playSequence() {
     }
   }
 
+  // Quantize times to tempo grid so bounces hit the beat
+  try {
+    const secondsPerBeat = 60 / playbackTuning.tempoBpm;
+    const grid = secondsPerBeat / playbackTuning.gridSubdivision;
+    for (let i = 0; i < rel.length; i++) {
+      rel[i].t = Math.round(rel[i].t / grid) * grid;
+      if (i > 0 && rel[i].t <= rel[i - 1].t) {
+        rel[i].t = rel[i - 1].t + grid; // ensure strictly increasing
+      }
+    }
+  } catch (_) {}
+
   // Compute total duration slightly beyond last event
   const totalDur = (rel[rel.length - 1].t || 0) + 0.35;
 
@@ -1003,7 +1023,8 @@ async function playSequence() {
   const lastT = rel[rel.length - 1].t || 0.0001;
   const keyframes = points.map((p, i) => ({
     x: p.x,
-    y: p.y,
+    // place slightly above the top to simulate a bounce landing
+    y: p.y + 0,
     t: (rel[i]?.t ?? (i / (points.length - 1) * lastT)) / totalDur,
   }));
 
@@ -1038,7 +1059,7 @@ async function playSequence() {
     const speedLimited = dist / playbackTuning.maxPixelsPerSecond;
     segDur = Math.max(playbackTuning.minSegmentSec, Math.max(segDur, speedLimited));
     segDur = segDur / speedRatio; // apply style speed ratio
-    // Arc control point: mid x between a and b, elevated y by -20..-60 px
+    // Bounce: apex midway with upward lift
     const midX = (a.x + b.x) / 2;
     const lift = Math.max(playbackTuning.arcLiftMin, Math.min(playbackTuning.arcLiftMax, Math.abs(a.x - b.x) * playbackTuning.arcLiftFactor));
     const cp = { x: midX, y: Math.min(a.y, b.y) - lift };
@@ -1053,10 +1074,14 @@ async function playSequence() {
         curviness: 1.2 * playbackTuning.playheadElasticity,
         autoRotate: false,
       },
-      // Add bouncy, lively animation
-      scale: `${0.8 + 0.4 * playbackTuning.playheadElasticity}`,
-      rotation: `${Math.random() * 20 - 10}deg`,
-      ease: `elastic.out(${playbackTuning.playheadElasticity}, 0.3)`,
+      // Add tight bounce easing on landing
+      scale: `${0.9 + 0.2 * playbackTuning.playheadElasticity}`,
+      rotation: 0,
+      ease: `power1.inOut`,
+      onComplete: () => {
+        // Ensure a clicky bounce/play exactly on landing
+        playNoteAtIndex(i + 1, '+0');
+      },
       onUpdate: function() {
         // Trail effect that matches the playhead shape
         // Get the ball's actual screen position and convert to trail layer coordinates
@@ -1463,6 +1488,10 @@ function init() {
   document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
   document.getElementById('importFile').addEventListener('change', handleImportJson);
   document.getElementById('exportWavBtn').addEventListener('click', exportAsWav);
+  const exportMp3Btn = document.getElementById('exportMp3Btn');
+  if (exportMp3Btn) exportMp3Btn.addEventListener('click', exportAsMp3);
+  const exportLrcBtn = document.getElementById('exportLrcBtn');
+  if (exportLrcBtn) exportLrcBtn.addEventListener('click', exportAsLrc);
 
   // Physics
   initPhysics();
@@ -1675,6 +1704,142 @@ function writeString(view, offset, str) {
   }
 }
 
+// Export MP3 with embedded timed (SYLT) and unsynced (USLT) lyrics
+async function exportAsMp3() {
+  try {
+    if (!state.events.length) return;
+    // Build relative, note-only timeline like WAV export
+    const relStart = state.events[0].time;
+    const rel = state.events
+      .map(e => ({ t: Math.max(0, e.time - relStart), note: e.note, char: e.char }))
+      .filter(e => e.note);
+    const totalDur = (rel.length ? rel[rel.length - 1].t : 0) + 0.8;
+
+    // Render offline to PCM buffer
+    const offlineBuffer = await new Tone.Offline(({ transport }) => {
+      const reverb = new Tone.Reverb({ decay: 1.6, wet: 0.2 }).toDestination();
+      const delay = new Tone.FeedbackDelay({ delayTime: 0.15, feedback: 0.15, wet: 0.12 }).connect(reverb);
+      const synth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.5 },
+      }).connect(delay);
+      const part = new Tone.Part((time, v) => synth.triggerAttackRelease(v.note, 0.22, time), rel.map(r => [r.t, { note: r.note }]));
+      part.start(0);
+      transport.start();
+    }, totalDur);
+
+    // Encode to MP3 using lamejs
+    const numChannels = offlineBuffer.numberOfChannels;
+    const sampleRate = offlineBuffer.sampleRate;
+    const mp3Encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, 192);
+    const left = offlineBuffer.getChannelData(0);
+    const right = numChannels > 1 ? offlineBuffer.getChannelData(1) : left;
+
+    const blockSize = 1152;
+    let mp3Data = [];
+    for (let i = 0; i < left.length; i += blockSize) {
+      const leftChunk = floatTo16(left.subarray(i, i + blockSize));
+      const rightChunk = floatTo16(right.subarray(i, i + blockSize));
+      const mp3buf = mp3Encoder.encodeBuffer(leftChunk, rightChunk);
+      if (mp3buf.length > 0) mp3Data.push(mp3buf);
+    }
+    const encEnd = mp3Encoder.flush();
+    if (encEnd.length > 0) mp3Data.push(encEnd);
+    const mp3Blob = new Blob(mp3Data, { type: 'audio/mpeg' });
+
+    // Build USLT (unsynced lyrics) from characters
+    const plainText = state.events.map(e => e.char).join('');
+
+    // Build SYLT (timed) from rel timeline; use milliseconds
+    const sylt = rel
+      .filter(r => r.char && r.char !== '\n')
+      .map(r => ({ timestamp: Math.round(r.t * 1000), text: r.char }));
+
+    // Tag MP3
+    const arrayBuffer = await mp3Blob.arrayBuffer();
+    const writer = new ID3Writer(arrayBuffer);
+    writer.setFrame('TIT2', 'Music Letter Export')
+      .setFrame('TPE1', ['Music Letter'])
+      // USLT (unsynced) only – library does not support SYLT frame
+      .setFrame('USLT', { description: '', lyrics: plainText });
+    writer.addTag();
+
+    const taggedBlob = writer.getBlob();
+    const url = URL.createObjectURL(taggedBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'music-letter.mp3';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('MP3 export failed:', e);
+  }
+}
+
+function floatTo16(f32arr) {
+  const len = f32arr.length;
+  const i16 = new Int16Array(len);
+  for (let i = 0; i < len; i++) {
+    let s = Math.max(-1, Math.min(1, f32arr[i]));
+    i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return i16;
+}
+
+// Export time-synced lyrics as .lrc (common karaoke format)
+function exportAsLrc() {
+  if (!state.events.length) return;
+  // Build timing baseline
+  const relStart = state.events[0].time;
+  // Group characters into lines split by \n, with timestamps from first char in each word/line
+  const lines = [];
+  let currentLineChars = [];
+  let currentLineTimes = [];
+  for (const e of state.events) {
+    if (e.char === '\n') {
+      if (currentLineChars.length) {
+        lines.push({ text: currentLineChars.join(''), t: currentLineTimes[0] ?? 0 });
+      }
+      currentLineChars = [];
+      currentLineTimes = [];
+      continue;
+    }
+    currentLineChars.push(e.char);
+    currentLineTimes.push(Math.max(0, e.time - relStart));
+  }
+  if (currentLineChars.length) {
+    lines.push({ text: currentLineChars.join(''), t: currentLineTimes[0] ?? 0 });
+  }
+
+  // Format to [mm:ss.xx]text
+  const toTag = (sec) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    const cs = Math.floor((sec - Math.floor(sec)) * 100);
+    return `[${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}]`;
+  };
+
+  let lrc = '';
+  lrc += `[ti:Music Letter Export]\n`;
+  lrc += `[ar:Music Letter]\n`;
+  lrc += `[by:Music Letter]\n`;
+  for (const line of lines) {
+    const tag = toTag(line.t || 0);
+    lrc += `${tag}${line.text.replace(/\r?\n/g,'')}\n`;
+  }
+
+  const blob = new Blob([lrc], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'music-letter.lrc';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 window.addEventListener('DOMContentLoaded', init);
 
 

@@ -172,19 +172,19 @@ body {
 .controls.collapsed .controls-content { display: none; }
 .controls .controls-content {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 8px 12px;
   align-items: center; /* keep rows aligned when wrapping */
 }
 .left-controls, .right-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .controls .left-controls { grid-column: 1; }
 .controls .right-controls { grid-column: 1; }
 @media (min-width: 900px) {
-  .controls .controls-content { grid-template-columns: 1fr 1fr; }
+  .controls .controls-content { grid-template-columns: repeat(2, minmax(340px, 1fr)); }
   .controls .left-controls { grid-column: 1; }
   .controls .right-controls { grid-column: 2; justify-content: flex-end; }
 }
-.control-label { margin-left: 8px; }
+.control-label { margin-left: 8px; line-height: 36px; }
 
 select, button {
   font-family: var(--font-sans);
