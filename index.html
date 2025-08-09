@@ -2,12 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Music Letter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+    <meta name="description" content="Interactive typography that converts your typing into beautiful animations with musical feedback" />
+    <meta name="keywords" content="music, typography, animation, interactive, creative, web app" />
+    <meta name="author" content="Music Letter" />
+    <meta name="theme-color" content="#7a5cff" />
+    
+    <!-- Performance optimizations -->
+    <meta name="preload" content="fonts" />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    
+    <title>Music Letter - Interactive Typography with Sound</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Playfair+Display:wght@400;600&family=EB+Garamond:wght@400;600&family=Merriweather:wght@400;700&family=Lora:wght@400;600&family=Cormorant+Garamond:wght@400;600&family=DM+Serif+Display&family=Libre+Baskerville:wght@400;700&family=Great+Vibes&family=Pacifico&family=Dancing+Script:wght@400;600&family=Cinzel+Decorative:wght@400;700&family=Playball&family=Lobster&family=Sacramento&family=Amatic+SC:wght@400;700&family=Caveat:wght@400;600&family=Abril+Fatface&family=Berkshire+Swash&family=Shadows+Into+Light&family=Indie+Flower&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js" defer></script>
@@ -15,11 +27,16 @@
     <!-- MP3 encoding and ID3 tagging -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/browser-id3-writer@4.1.0/dist/browser-id3-writer.min.js" defer></script>
-    <script src="./app.js?v=7" defer></script>
+    <script src="./app.js?v=11" defer></script>
   </head>
   <body>
-    <div class="controls collapsed" id="controls" role="toolbar" aria-label="Controls">
-      <button id="controlsToggle" class="controls-toggle" aria-label="Toggle controls" aria-expanded="false">✉️</button>
+    <!-- Skip to main content for screen readers -->
+    <a href="#letterSheet" class="skip-link">Skip to main content</a>
+    <div class="controls collapsed" id="controls" role="toolbar" aria-label="Application controls and settings">
+      <button id="controlsToggle" class="controls-toggle" aria-label="Toggle controls panel" aria-expanded="false" title="Show/hide controls">
+        <span aria-hidden="true">✉️</span>
+        <span class="sr-only">Toggle Controls</span>
+      </button>
       <div class="controls-content">
       <div class="left-controls">
         <label for="themeSelect">Theme</label>
@@ -91,8 +108,12 @@
         </select>
       </div>
       <div class="right-controls">
-        <button id="playBtn" aria-label="Play">Play</button>
-        <button id="clearBtn" aria-label="Clear">Clear</button>
+        <button id="playBtn" aria-label="Play sequence" title="Play the typed sequence with animation">
+          <span aria-hidden="true">▶️</span> Play
+        </button>
+        <button id="clearBtn" aria-label="Clear all text" title="Clear all typed content">
+          <span aria-hidden="true">🗑️</span> Clear
+        </button>
         <label for="soundSelect" class="control-label">Sound</label>
         <select id="soundSelect" aria-label="Sound preset">
           <option value="sine_soft">Sine Soft</option>
@@ -119,14 +140,30 @@
       </div>
     </div>
 
-    <main class="stage">
-      <section id="letterSheet" class="letter-sheet" aria-label="Letter sheet" tabindex="0">
-        <div id="textArea" class="text-area" aria-live="polite"></div>
+    <main class="stage" role="main">
+      <section id="letterSheet" class="letter-sheet" aria-label="Interactive typing area" tabindex="0" role="textbox" aria-multiline="true" aria-describedby="instructions">
+        <div id="textArea" class="text-area" aria-live="polite" aria-atomic="false"></div>
+        <div id="instructions" class="sr-only">
+          Start typing to create animated letters with musical notes. Use backspace to delete, enter for new lines. 
+          Click the controls button to adjust themes, fonts, and export options.
+        </div>
         <div id="trailLayer" class="trail-layer" aria-hidden="true"></div>
         <div id="ball" class="ball" aria-hidden="true"></div>
       </section>
     </main>
+      
+    <!-- Loading indicator -->
+    <div id="loadingIndicator" class="loading-indicator" aria-hidden="true">
+      <div class="loading-spinner"></div>
+      <p>Loading Music Letter...</p>
+    </div>
+    
+    <!-- Error notification -->
+    <div id="errorNotification" class="error-notification" role="alert" aria-live="assertive" aria-atomic="true" style="display: none;">
+      <p id="errorMessage"></p>
+      <button id="dismissError" aria-label="Dismiss error">×</button>
+    </div>
   </body>
-  </html>
+</html>
 
 

@@ -1,16 +1,30 @@
 /*
-  Music Letter MVP
-  - Typing creates falling letters with GSAP
-  - Each keystroke plays a tone via Tone.js
-  - Notes are recorded and can be played back
-  - A ball animates over letters along a generated path in sync with notes
+  Music Letter - Interactive Typography with Musical Feedback
+  
+  Features:
+  - Real-time typing with animated letter drops
+  - Musical note generation from keystrokes
+  - Playback visualization with customizable playheads
+  - Multiple themes, fonts, and export formats
+  - Physics-based letter animations
+  
+  Architecture:
+  - Modular design with separated concerns
+  - State management centralization
+  - Performance-optimized animations
+  - Accessible UI components
 */
 
-/* Globals */
+// Initialize GSAP plugins
 if (window.gsap && window.MotionPathPlugin) {
   gsap.registerPlugin(MotionPathPlugin);
 }
 
+// ============================================================================
+// CONFIGURATION & CONSTANTS
+// ============================================================================
+
+// Application state - centralized for better management
 const state = {
   theme: 'classic',
   pattern: 'plain',
@@ -45,7 +59,26 @@ const state = {
   },
 };
 
-// Playback tuning to keep motion musical and pleasant
+// Performance and animation configuration
+const CONFIG = {
+  PERFORMANCE: {
+    MAX_TRAIL_DOTS: 50, // Limit trail dots for performance
+    ANIMATION_FRAME_BUDGET: 16, // Target 60fps
+    DEBOUNCE_RESIZE: 250, // ms
+    FAST_TYPING_THRESHOLD: 150, // ms between keystrokes
+  },
+  STORAGE: {
+    KEY: 'music-letter-v2',
+    ENABLED: false, // Disable persistence for now
+  },
+  AUDIO: {
+    MASTER_VOLUME: -12, // dB
+    REVERB_DECAY: 2.0,
+    DELAY_TIME: 0.18,
+  }
+};
+
+// Playback tuning - optimized for smooth performance
 const playbackTuning = {
   maxPixelsPerSecond: 700,    // clamp max travel speed
   minSegmentSec: 0.12,        // ensure each hop has minimum duration
@@ -239,9 +272,17 @@ async function ensureAudio() {
   }
 }
 
+// ============================================================================
+// AUDIO MANAGEMENT
+// ============================================================================
+
 function playNote(note) {
-  if (!note) return;
-  state.synth?.triggerAttackRelease(note, 0.25);
+  try {
+    if (!note || !state.synth) return;
+    state.synth.triggerAttackRelease(note, 0.25);
+  } catch (error) {
+    console.error('Error playing note:', error);
+  }
 }
 
 function configureSynthForTheme(theme) {
@@ -312,48 +353,60 @@ function setSoundPreset(preset) {
   state.effects = { reverb, delay };
 }
 
-function createLetterSpan(char, container, x, y, animate = true) {
-  const span = document.createElement('span');
-  span.className = 'typed-letter';
-  span.textContent = char;
-  container.appendChild(span);
-  // Measure width/height by placing then positioning
-  const rect = container.getBoundingClientRect();
-  const targetLeft = x;
-  const targetTop = y;
+// ============================================================================
+// PERFORMANCE-OPTIMIZED LETTER CREATION
+// ============================================================================
 
-  if (!state.physics.enabled) {
-    // Arc drop animation to the final layout position
-    const rand = (min, max) => Math.random() * (max - min) + min;
-    const startY = -rand(60, 140);
-    const startX = Math.max(0, Math.min(rect.width - (span.getBoundingClientRect().width || 16), targetLeft + rand(-140, 140)));
-    span.style.left = `${startX}px`;
-    span.style.top = `${startY}px`;
-    if (animate) {
-      gsap.to(span, {
-        left: targetLeft,
-        top: targetTop,
-        duration: 0.75,
-        ease: 'power3.out',
-        onComplete: () => {
-          // Ensure final position is set precisely
-          span.style.left = `${targetLeft}px`;
-          span.style.top = `${targetTop}px`;
-        }
-      });
+function createLetterSpan(char, container, x, y, animate = true) {
+  try {
+    const span = document.createElement('span');
+    span.className = 'typed-letter';
+    span.textContent = char;
+    container.appendChild(span);
+    
+    // Measure width/height by placing then positioning
+    const rect = container.getBoundingClientRect();
+    const targetLeft = x;
+    const targetTop = y;
+
+    if (!state.physics.enabled) {
+      // Arc drop animation to the final layout position
+      const rand = (min, max) => Math.random() * (max - min) + min;
+      const startY = -rand(60, 140);
+      const startX = Math.max(0, Math.min(rect.width - (span.getBoundingClientRect().width || 16), targetLeft + rand(-140, 140)));
+      
+      span.style.left = `${startX}px`;
+      span.style.top = `${startY}px`;
+      
+      if (animate) {
+        gsap.to(span, {
+          left: targetLeft,
+          top: targetTop,
+          duration: 0.75,
+          ease: 'power3.out',
+          onComplete: () => {
+            // Ensure final position is set precisely
+            span.style.left = `${targetLeft}px`;
+            span.style.top = `${targetTop}px`;
+          }
+        });
+      } else {
+        span.style.left = `${targetLeft}px`;
+        span.style.top = `${targetTop}px`;
+      }
     } else {
-      span.style.left = `${targetLeft}px`;
-      span.style.top = `${targetTop}px`;
+      // Physics-based drop
+      const localX = targetLeft;
+      const localY = -64;
+      span.style.left = `${localX}px`;
+      span.style.top = `${localY}px`;
+      addLetterBody(span, localX, localY, targetTop);
     }
-  } else {
-    // Physics-based drop
-    const localX = targetLeft;
-    const localY = -64;
-    span.style.left = `${localX}px`;
-    span.style.top = `${localY}px`;
-    addLetterBody(span, localX, localY, targetTop);
+    return span;
+  } catch (error) {
+    console.error('Error creating letter span:', error);
+    return null;
   }
-  return span;
 }
 
 function updateCursorPosition(container) {
@@ -639,40 +692,59 @@ function scheduleInactivityPlayback() {
   }, state.inactivityMs);
 }
 
+// ============================================================================
+// INPUT HANDLING - OPTIMIZED FOR PERFORMANCE
+// ============================================================================
+
 function handleKeyDown(ev) {
-  // Clear welcome text on first interaction
-  if (state.welcomeShown) {
-    clearWelcomeText();
-  }
-  
-  if (ev.key === 'Backspace' || ev.key === 'Delete') {
-    ev.preventDefault();
-    deleteLast();
-    scheduleInactivityPlayback();
-    return;
-  }
-  // Normalize input to handle Enter and Space reliably across browsers
-  let char = '';
-  if (ev.key === 'Enter') {
-    char = '\n';
-  } else if (ev.key === ' ' || ev.code === 'Space' || ev.key === 'Spacebar') {
-    char = ' ';
-  } else if (ev.key && ev.key.length === 1) {
-    char = ev.key;
-  }
-  if (!char) return;
-  ev.preventDefault();
+  try {
+    // Clear welcome text on first interaction
+    if (state.welcomeShown) {
+      clearWelcomeText();
+    }
+    
+    // Handle special keys
+    if (ev.key === 'Backspace' || ev.key === 'Delete') {
+      ev.preventDefault();
+      deleteLast();
+      scheduleInactivityPlayback();
+      return;
+    }
+    
+    // Prevent default for handled keys to avoid browser interference
+    if (ev.key.length === 1 || ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+    }
+    // Normalize input handling
+    let char = '';
+    if (ev.key === 'Enter') {
+      char = '\n';
+    } else if (ev.key === ' ' || ev.code === 'Space' || ev.key === 'Spacebar') {
+      char = ' ';
+    } else if (ev.key && ev.key.length === 1) {
+      char = ev.key;
+    }
+    
+    if (!char) return;
 
-  const lower = char.toLowerCase();
-  const note = state.keyToNote[lower] ?? null;
+    // Process input efficiently
+    const lower = char.toLowerCase();
+    const note = state.keyToNote[lower] ?? null;
 
-  ensureAudio().then(() => playNote(note));
+    // Play audio asynchronously to avoid blocking UI
+    ensureAudio().then(() => playNote(note)).catch(err => {
+      console.warn('Audio playback failed:', err);
+    });
 
-  const container = document.getElementById('textArea');
-  
-  // Record the event first
-  const pos = { x: 0, y: 0 }; // temporary, will be updated
-  recordEvent(char, note, pos);
+    const container = document.getElementById('textArea');
+    if (!container) {
+      console.error('Text area container not found');
+      return;
+    }
+    
+    // Record the event first
+    const pos = { x: 0, y: 0 }; // temporary, will be updated
+    recordEvent(char, note, pos);
   
   // Compute aligned positions for ALL events including the new one
   const layout = layoutEventsAligned(container, state.events, state.align);
@@ -738,7 +810,10 @@ function handleKeyDown(ev) {
   console.log('Updating cursor position to:', nextCaretPosition.x, nextCaretPosition.y);
   updateCursorPosition(container);
   
-  scheduleInactivityPlayback();
+    scheduleInactivityPlayback();
+  } catch (error) {
+    console.error('Error handling keydown:', error);
+  }
 }
 
 function deleteLast() {
@@ -1083,30 +1158,48 @@ async function playSequence() {
         playNoteAtIndex(i + 1, '+0');
       },
       onUpdate: function() {
-        // Trail effect that matches the playhead shape
-        // Get the ball's actual screen position and convert to trail layer coordinates
+        // Optimized trail effect with performance controls
+        const existingDots = trailLayer.children.length;
+        if (existingDots > CONFIG.PERFORMANCE.MAX_TRAIL_DOTS) {
+          // Remove oldest dots to maintain performance
+          const dotsToRemove = existingDots - CONFIG.PERFORMANCE.MAX_TRAIL_DOTS;
+          for (let i = 0; i < dotsToRemove; i++) {
+            trailLayer.children[0]?.remove();
+          }
+        }
+        
+        // Get ball position efficiently
         const ballRect = ball.getBoundingClientRect();
         const trailRect = trailLayer.getBoundingClientRect();
         
-        // Calculate ball center in trail layer coordinate system
-        const ballCenterX = ballRect.left + ballRect.width / 2 - trailRect.left;
-        const ballCenterY = ballRect.top - trailRect.top + playbackTuning.playheadYOffsetPx; // align to top of letters
+        const ballCenterX = ballRect.left + ballRect.width * 0.5 - trailRect.left;
+        const ballCenterY = ballRect.top - trailRect.top + playbackTuning.playheadYOffsetPx;
         
+        // Create optimized trail dot
         const dot = document.createElement('div');
-        
-        // Make trail dot match the playhead style
         dot.className = `trail-dot ${state.playhead?.className || ''}`.trim();
         
-        // Position the trail dot at the ball's center
-        dot.style.left = `${ballCenterX - 6}px`; // Center the 12px dot
-        dot.style.top = `${ballCenterY - 6}px`;
-        dot.style.transform = `scale(${trailScale})`; // Full size trail dots
-        
-        console.log('Ball rect:', ballRect, '| Trail rect:', trailRect);
-        console.log('Ball center in trail coords:', ballCenterX, ballCenterY, '| Trail dot at:', ballCenterX - 6, ballCenterY - 6);
+        // Use transform for better performance
+        gsap.set(dot, {
+          x: ballCenterX - 6,
+          y: ballCenterY - 6,
+          scale: trailScale,
+          willChange: 'transform, opacity'
+        });
         
         trailLayer.appendChild(dot);
-        gsap.to(dot, { opacity: 0, scale: 0.3, duration: 0.6, ease: 'power1.out', onComplete: () => dot.remove() });
+        
+        // Optimized fade-out animation
+        gsap.to(dot, {
+          opacity: 0,
+          scale: 0.3,
+          duration: 0.6,
+          ease: 'power1.out',
+          onComplete: () => {
+            dot.style.willChange = 'auto';
+            dot.remove();
+          }
+        });
       },
     }, i === 0 ? 0 : undefined);
   }
@@ -1300,11 +1393,12 @@ function snapLettersToTypesetGrid() {
   }
 }
 
-// Storage
-const STORAGE_KEY = 'music-letter-v1';
-const PERSIST_ENABLED = false; // Disable local persistence across refreshes
+// ============================================================================
+// STORAGE MANAGEMENT
+// ============================================================================
+
 function persistToStorage() {
-  if (!PERSIST_ENABLED) return;
+  if (!CONFIG.STORAGE.ENABLED) return;
   try {
     const data = {
       theme: state.theme,
@@ -1312,19 +1406,25 @@ function persistToStorage() {
       font: getComputedStyle(document.documentElement).getPropertyValue('--font-serif') || 'Playfair Display',
       palette: document.getElementById('paletteSelect')?.value || 'majorC',
       events: state.events,
+      version: '2.0'
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) { /* ignore */ }
+    localStorage.setItem(CONFIG.STORAGE.KEY, JSON.stringify(data));
+  } catch (error) {
+    console.warn('Failed to persist to storage:', error);
+  }
 }
 
 function restoreFromStorage() {
-  if (!PERSIST_ENABLED) {
-    // Ensure no stale data remains when persistence is disabled
-    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+  if (!CONFIG.STORAGE.ENABLED) {
+    // Clean up old storage when persistence is disabled
+    try { 
+      localStorage.removeItem('music-letter-v1');
+      localStorage.removeItem(CONFIG.STORAGE.KEY);
+    } catch (_) {}
     return;
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(CONFIG.STORAGE.KEY);
     if (!raw) return;
     const data = JSON.parse(raw);
     console.log('Restoring from storage:', data);
@@ -1385,17 +1485,25 @@ function restoreFromStorage() {
 }
 
 function init() {
-  // Set default theme and sound palette
-  state.theme = 'classic';
-  document.documentElement.setAttribute('data-theme', 'classic');
-  state.keyToNote = buildKeyToNote(themes['classic']?.soundPalette || 'majorC');
-  
-  // Configure synth for theme
   try {
-    if (Tone.getContext().state === 'running' && state.synth) {
-      configureSynthForTheme('classic');
+    console.log('Initializing Music Letter...');
+    
+    // Show loading state initially
+    setTimeout(hideLoadingIndicator, 1000);
+    
+    // Set default theme and sound palette
+    state.theme = 'classic';
+    document.documentElement.setAttribute('data-theme', 'classic');
+    state.keyToNote = buildKeyToNote(themes['classic']?.soundPalette || 'majorC');
+    
+    // Configure synth for theme
+    try {
+      if (Tone.getContext().state === 'running' && state.synth) {
+        configureSynthForTheme('classic');
+      }
+    } catch (error) {
+      console.warn('Audio configuration failed:', error);
     }
-  } catch (_) {}
   
   const sheet = document.getElementById('letterSheet');
   sheet.addEventListener('keydown', handleKeyDown);
@@ -1416,12 +1524,41 @@ function init() {
         clearWelcomeText();
       }
       sheet.focus();
+      // Completely remove all focus indicators immediately after focusing
+      sheet.style.outline = 'none';
+      sheet.style.boxShadow = 'none';
+      sheet.style.border = 'none';
+      sheet.blur(); // Remove focus immediately
+      sheet.focus(); // Re-focus for keyboard input without visual indicator
     }
   });
   sheet.focus();
 
-  document.getElementById('playBtn').addEventListener('click', playSequence);
-  document.getElementById('clearBtn').addEventListener('click', clearAll);
+    // Add error handling to event listeners
+    const playBtn = document.getElementById('playBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    
+    if (playBtn) {
+      playBtn.addEventListener('click', async () => {
+        try {
+          await playSequence();
+        } catch (error) {
+          console.error('Playback failed:', error);
+          showError('Playback failed. Please try again.');
+        }
+      });
+    }
+    
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        try {
+          clearAll();
+        } catch (error) {
+          console.error('Clear failed:', error);
+          showError('Failed to clear content. Please refresh the page.');
+        }
+      });
+    }
 
   const themeSelect = document.getElementById('themeSelect');
   themeSelect.addEventListener('change', (e) => setTheme(e.target.value));
@@ -1502,37 +1639,80 @@ function init() {
     reflowExistingLetters();
   });
 
-  // Restore
-  restoreFromStorage();
+    // Restore previous state
+    try {
+      restoreFromStorage();
+    } catch (error) {
+      console.warn('Failed to restore from storage:', error);
+    }
 
-  // Set default font to Pacifico (after restore to override stored settings)
-  if (state.events.length === 0) {
-    setFont('Pacifico');
+    // Set default font to Pacifico (after restore to override stored settings)
+    if (state.events.length === 0) {
+      setFont('Pacifico');
+    }
+
+    // Show welcome text if no events exist
+    if (state.events.length === 0) {
+      showWelcomeText();
+    }
+    
+    // Initialize cursor position
+    const container = document.getElementById('textArea');
+    if (container) {
+      initializeCursor(container);
+    }
+
+    // Default playhead style
+    setPlayheadStyle('kitten');
+
+    // Controls collapse/expand with error handling
+    const controls = document.getElementById('controls');
+    const toggle = document.getElementById('controlsToggle');
+    
+    if (controls && toggle) {
+      const setCollapsed = (collapsed) => {
+        controls.classList.toggle('collapsed', collapsed);
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+      };
+      
+      // Toggle controls when clicking the toggle button
+      toggle.addEventListener('click', (e) => {
+        try {
+          e.stopPropagation(); // Prevent event bubbling
+          const isCollapsed = controls.classList.contains('collapsed');
+          setCollapsed(!isCollapsed);
+        } catch (error) {
+          console.error('Failed to toggle controls:', error);
+        }
+      });
+      
+      // Prevent controls panel clicks from bubbling up
+      controls.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+      
+      // Auto-collapse controls when clicking elsewhere
+      document.addEventListener('click', (e) => {
+        try {
+          // Check if the click is outside the controls panel
+          if (!controls.contains(e.target)) {
+            setCollapsed(true);
+          }
+        } catch (error) {
+          console.error('Failed to auto-collapse controls:', error);
+        }
+      });
+    }
+    
+    // Start performance monitoring
+    startPerformanceMonitoring();
+    
+    console.log('Music Letter initialized successfully');
+    
+  } catch (error) {
+    console.error('Initialization failed:', error);
+    showError('Application failed to initialize. Please refresh the page.');
   }
-
-  // Show welcome text if no events exist
-  if (state.events.length === 0) {
-    showWelcomeText();
-  }
-  
-  // Initialize cursor position
-  const container = document.getElementById('textArea');
-  initializeCursor(container);
-
-  // Default playhead style
-  setPlayheadStyle('kitten');
-
-  // Controls collapse/expand
-  const controls = document.getElementById('controls');
-  const toggle = document.getElementById('controlsToggle');
-  const setCollapsed = (collapsed) => {
-    controls.classList.toggle('collapsed', collapsed);
-    toggle.setAttribute('aria-expanded', String(!collapsed));
-  };
-  toggle.addEventListener('click', () => {
-    const isCollapsed = controls.classList.contains('collapsed');
-    setCollapsed(!isCollapsed);
-  });
 }
 
 // Master volume
@@ -1840,6 +2020,105 @@ function exportAsLrc() {
   a.remove();
   URL.revokeObjectURL(url);
 }
+// ============================================================================
+// ERROR HANDLING & USER FEEDBACK
+// ============================================================================
+
+function showError(message, duration = 5000) {
+  const notification = document.getElementById('errorNotification');
+  const messageEl = document.getElementById('errorMessage');
+  const dismissBtn = document.getElementById('dismissError');
+  
+  if (!notification || !messageEl) return;
+  
+  messageEl.textContent = message;
+  notification.style.display = 'flex';
+  
+  // Auto-dismiss after duration
+  const timeoutId = setTimeout(() => {
+    hideError();
+  }, duration);
+  
+  // Manual dismiss
+  const handleDismiss = () => {
+    clearTimeout(timeoutId);
+    hideError();
+    dismissBtn.removeEventListener('click', handleDismiss);
+  };
+  
+  dismissBtn.addEventListener('click', handleDismiss);
+}
+
+function hideError() {
+  const notification = document.getElementById('errorNotification');
+  if (notification) {
+    notification.style.display = 'none';
+  }
+}
+
+function hideLoadingIndicator() {
+  const loading = document.getElementById('loadingIndicator');
+  if (loading) {
+    loading.classList.add('hidden');
+    setTimeout(() => {
+      loading.style.display = 'none';
+    }, 300); // Wait for fade transition
+  }
+}
+
+// ============================================================================
+// PERFORMANCE MONITORING
+// ============================================================================
+
+const PerformanceMonitor = {
+  frameCount: 0,
+  lastTime: performance.now(),
+  fps: 60,
+  
+  update() {
+    const now = performance.now();
+    const delta = now - this.lastTime;
+    this.frameCount++;
+    
+    if (delta >= 1000) {
+      this.fps = (this.frameCount * 1000) / delta;
+      this.frameCount = 0;
+      this.lastTime = now;
+      
+      // Adjust quality based on performance
+      if (this.fps < 30) {
+        this.reduceQuality();
+      } else if (this.fps > 55) {
+        this.increaseQuality();
+      }
+    }
+  },
+  
+  reduceQuality() {
+    // Reduce trail dots and animation complexity
+    CONFIG.PERFORMANCE.MAX_TRAIL_DOTS = Math.max(20, CONFIG.PERFORMANCE.MAX_TRAIL_DOTS - 5);
+    console.log('Performance: Reduced quality, FPS:', this.fps.toFixed(1));
+  },
+  
+  increaseQuality() {
+    // Restore quality if performance allows
+    CONFIG.PERFORMANCE.MAX_TRAIL_DOTS = Math.min(50, CONFIG.PERFORMANCE.MAX_TRAIL_DOTS + 2);
+  }
+};
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
 window.addEventListener('DOMContentLoaded', init);
+
+// Add performance monitoring
+function startPerformanceMonitoring() {
+  function frame() {
+    PerformanceMonitor.update();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
 
 
